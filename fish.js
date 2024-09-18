@@ -1,9 +1,9 @@
 import { CVariables, CInventory, COwnable, CCountable, CStats, Stat, CInteractable, GameEvent, CDescriptors, CStrings }
-	from "../code/raspg.js"
+	from "./code/raspg.js"
 import { Game, Interaction, CompositeObject }
-	from "../code/raspg.js"
+	from "./code/raspg.js"
 import { Steptext }
-	from "../code/steptext.js"
+	from "./code/steptext.js"
 
 //# Fishing stuff
 class Fish extends CompositeObject {
