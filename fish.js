@@ -208,11 +208,12 @@ new Discovery('water pressure anomaly', 'Sensor readings of a region of abnormal
 	function ResetPressure() {
 		player.resetVar('pressure')
 		player.setVar('turnsToResetPressure', 0)
+		player.alterVar('lastPressureEvent', val => player.getVar('turn'))
 		Game.out(`Your hull stops creaking and moaning, having adjusted to the **pressure**.`)
 		GameEvent.get('TURN').listeners.delete(handler)
 		PickOne(soundsCreak).volume(.1).play()
 	}
-}, { addToInventory: true, variance: 0, maxTimes: Infinity, chance: 0.2, needs: () => player.getVar('turnsToResetPressure') === 0 })
+}, { addToInventory: true, variance: 0, maxTimes: Infinity, chance: 0.2, needs: () => player.getVar('turnsToResetPressure') === 0 && player.getVar('lastPressureEvent') >= 10  })
 new Discovery('distant echoes', 'Recordings of distant, whimper-like echoes.', 600, function() {
 	Game.out(`You hear something that sounds like a distant whimper echoing out of the depths, out of sensor range.\n\nThe sound makes you shiver.`)
 	this.depth += 100 + Math.round(Math.random()*100 - 50)
@@ -285,10 +286,11 @@ new Discovery('hot water anomaly', 'Sensor readings of a region of abnormally ho
 		document.body.parentElement.classList.remove('hotwater')
 		player.resetVar('temperature')
 		player.setVar('turnsToResetTemperature', 0)
+		player.alterVar('lastTemperatureEvent', val => player.getVar('turn'))
 		Game.out(`You hear the hull creak a few more times, as the **temperature** gauge returns to frigid temperatures.`)
 		GameEvent.get('TURN').unlisten(handler)
 	}
-}, { addToInventory: true, variance: 0, chance: 0.1, maxTimes: Infinity, needs: () => player.getVar('turnsToResetTemperature') === 0 })
+}, { addToInventory: true, variance: 0, chance: 0.1, maxTimes: Infinity, needs: () => player.getVar('turnsToResetTemperature') === 0 && player.getVar('lastTemperatureEvent') >= 10 })
 new Discovery('lights out', '', 450, function() {
 	setTimeout(() => document.body.classList.remove('lights'), (65+10)*Steptext.interval)
 	player.setVar('lightsWork', false)
@@ -327,7 +329,7 @@ new Discovery('1238', '', 250, function() {
 					this.setVar('fishScared', true)
 				}
 			} else {
-				Game.out(`You investigate further. The entire wall of the tunnel looks as though the rock has been chiped and chewed off.\n\nThe discovery makes you shiver.`)
+				Game.out(`You investigate further. The entire wall of the tunnel looks as though the rock has been chipped and chewed off.\n\nThe discovery makes you shiver.`)
 				this.setVar('wallsSeen', true)
 			}
 		else {
@@ -343,7 +345,10 @@ new Discovery('1238', '', 250, function() {
 	investigate.registerVariable('fishScared', false)
 	investigate.registerVariable('wallsSeen', false)
 	player.addInteraction(investigate)
+	let caughtCount = 0
 	const handler = () => {
+		if (++caughtCount <= 1)
+			return
 		player.removeInteraction(investigate)
 		GameEvent.get('CAUGHT').unlisten(handler)
 	}
@@ -377,7 +382,7 @@ new Discovery('deadzone', '', 800, function() {
 	}
 })
 //? Events
-new GameEvent('TURN')
+new GameEvent('TURN', () => player.alterVar('turn', val => val += 1))
 new GameEvent('CAUGHT', () => {
 	caught.textContent = ''+player.getVar('caught')
 	GameEvent.trigger('DEPTH')
@@ -515,6 +520,7 @@ player.addInteraction('wait')
 player.addInteraction('fish')
 player.setInventoryStrings('$fishes $discoveries')
 player.registerStat(new Stat('power'))
+player.registerVariable('turn', 0)
 player.registerVariable('canCatch', true)
 player.registerVariable('caught', 0)
 player.registerVariable('depth', 0)
@@ -524,8 +530,10 @@ player.registerVariable('lights', false)
 player.registerVariable('flashlight', false)
 player.registerVariable('pressure', 'It reads nominal.')
 player.registerVariable('turnsToResetPressure', 0)
+player.registerVariable('lastPressureEvent', -1)
 player.registerVariable('temperature', 'It reads nominal.')
 player.registerVariable('turnsToResetTemperature', 0)
+player.registerVariable('lastTemperatureEvent', -1)
 player.registerVariable('deadzone', false)
 player.registerVariable('deadzoneTurns', 5)
 
