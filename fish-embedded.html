@@ -1,0 +1,2409 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Fathomless</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+	<script type="module" data-info="https://stackoverflow.com/a/43834063">
+		let l,e,t='script',p=/(from\s+|import\s+)['"](#[\w\-]+)['"]/g,x='textContent',d=document,
+		s,o;for(o of d.querySelectorAll(t+'[type=inline-module]'))l=d.createElement(t),o
+		.id?l.id=o.id:0,l.type='module',l[x]=o[x].replace(p,(u,a,z)=>(e=d.querySelector(
+		t+z+'[type=module][src]'))?a+`/* ${z} */'${e.src}'`:u),l.src=URL.createObjectURL
+		(new Blob([l[x]],{type:'application/java'+t})),o.replaceWith(l)//inline
+	</script>
+	<script id="steptext" type="inline-module">
+		export class Steptext {
+			static bipInterval = 3
+			static bip = 0
+			static last_step = 0
+			static interval = 32
+			static effective_interval
+			static fast = false
+			static queue = ''
+			static close = []
+			static encodings = new Map([
+				['\\*\\*', ['b', 2]],
+				['__', ['u', 2]],
+				['~~', ['s', 2]],
+				['\\*', ['i', 1]],
+				['_', ['i', 1]],
+				['~', ['wave', 1]],
+				['!!', ['jitter', 2]],
+				['##', ['glow', 2]],
+			])
+			static ind_wrap = [
+				'wave',
+				'jitter',
+			]
+			static element = null
+
+			static get skipback() {
+				return this.close.reduce((prv, cur) => prv + cur.length, 0)
+			}
+			static step(now, audio=true) {
+				if (Steptext.queue.length > 0) {
+					Steptext.place()
+					Steptext.last_step += (Steptext.interval * (Steptext.fast? 1/3 : 1))
+					const do_scroll = Steptext.element.scrollTop >= Steptext.element.scrollHeight - Steptext.element.clientHeight - 200
+					if (do_scroll)
+						Steptext.element.scrollTo({top: Steptext.element.scrollHeight})
+				}
+				else
+					Steptext.last_step = now
+				return setTimeout(Steptext.step, Steptext.interval * (Steptext.fast? 1/3 : 1))
+			}
+			static place() {
+				if (Steptext.queue.length == 0) return
+
+				while (Steptext.decode() || Steptext.htmlOpen() || Steptext.htmlClose()) null
+				if (Steptext.queue.length == 0) return
+
+				// Handle newlines and line breaks:
+				if (Steptext.queue.startsWith('\n') || Steptext.queue.startsWith('\r\n')) {
+					// Create a line break element (br or a custom element if needed):
+					Steptext.getInnermostChild().appendChild(document.createElement('br'))
+					Steptext.queue = Steptext.queue.slice(Steptext.queue[0] === '\r' ? 2 : 1)
+					return
+				}
+				if (Steptext.queue.startsWith('\\')) {
+					Steptext.queue = Steptext.queue.slice(1)
+					if (Steptext.queue.length)
+						Steptext.getInnermostChild().appendChild(document.createTextNode(Steptext.queue[0]))
+					return
+				}
+
+				// Handle regular text or individually wrapped characters:
+				if (Steptext.close.length && Steptext.close.filter(e => Steptext.ind_wrap.includes(e.match(/\w+/)[0])).length) {
+					const span = document.createElement('span')
+					const withSpaces = Steptext.queue.match(/^[^ ] */)
+					if (withSpaces) {
+						span.innerHTML = withSpaces[0].replaceAll(' ', '&nbsp;')
+						Steptext.queue = Steptext.queue.slice(withSpaces[0].length-1)
+					} else
+						span.innerHTML = Steptext.queue[0]
+					Steptext.getInnermostChild().appendChild(span)
+				} else {
+					if (Steptext.getInnermostChild()?.lastChild?.nodeType === 3) {
+						Steptext.getInnermostChild().lastChild.textContent += Steptext.queue[0]
+					} else {
+						const textNode = document.createTextNode(Steptext.queue[0])
+						Steptext.getInnermostChild().appendChild(textNode)
+					}
+				}
+
+				Steptext.queue = Steptext.queue.slice(1)
+			}
+			static decode() {
+				for (const [enc, [tag, size]] of Steptext.encodings.entries()) {
+					if (Steptext.queue.match(new RegExp('^' + enc))) {
+						if (Steptext.close.length && Steptext.close[0].match(/\w+/)[0] === tag) {
+							Steptext.close.shift()  // Remove closing tag
+						} else {
+							const element = document.createElement(tag)
+							Steptext.getInnermostChild().appendChild(element)
+							Steptext.close.unshift(`</${tag}>`)  // Add closing tag to handle nesting
+						}
+
+						Steptext.queue = Steptext.queue.slice(size)
+						return true
+					}
+				}
+				return false
+			}
+			static htmlOpen() {
+				const match = Steptext.queue.match(/^(<(\w+)(?: ([^>]+?))?>)[\s\S]+?<\/\2>/)
+				if (!match) return false
+
+				const tag = match[2]
+				const attributes = match[3]
+
+				const element = document.createElement(tag)
+
+				if (attributes)
+					Array.from(attributes.match(/([^=\s'"]+)(?:="(.*?)")?/g))
+						.map(m => m.match(/([^=\s'"]+)(?:="(.*?)")?/))
+						.forEach(([_, att, val]) => element.setAttribute(att, val))
+
+				Steptext.getInnermostChild().appendChild(element)
+				Steptext.close.unshift(`</${tag}>`)
+
+				Steptext.queue = Steptext.queue.slice(match[1].length)
+				return true
+			}
+			static htmlClose() {
+				if (Steptext.close.length && Steptext.queue.startsWith(Steptext.close[0])) {
+					Steptext.queue = Steptext.queue.slice(Steptext.close[0].length)
+					Steptext.close.shift()
+					return true
+				}
+				return false
+			}
+			static getInnermostChild() {
+				// Get the innermost child by applying .lastElementChild as many times as there are tags in the close property:
+				let target = Steptext.element
+				for (let i = 0; i < Steptext.close.length; i++) {
+					target = target.lastElementChild
+				}
+				return target
+			}
+			static skip() {
+				while(Steptext.queue.length > 0) Steptext.place()
+				Steptext.element.scrollTo({top: Steptext.element.scrollHeight})
+			}
+		}
+	</script>
+	<script id="raspg" type="inline-module">
+		/** @typedef {{identifier?: string, components?: Array<Component>, register?: boolean}} ObjectProps*/
+		/** @typedef {{name?: string, introduction?: string, description?: string, components?: Array<Component>, register?: boolean}} AreaProps */
+		/** @typedef {{value: number, add: number, mult: number, min:number, max: number, roundToNearest: number}} StatProps */
+		/** @typedef {{plural: string, pronoun: string}} DescriptorProps */
+		/** @typedef {{string | Array<string> | RegExp}} Match */
+		/** @typedef {(this: CompositeObject, self: CompositeObject, ...args: any[]) => void} InteractionFunction */
+		/** @typedef {(this: GameEvent, triggerer: CompositeObject, ...args) => void} EventHandler */
+		/** @typedef {(this: CompositeObject) => void} SynergyOperation */
+		/** @typedef {'valueError' | 'notFound' | 'missingComponent' | 'redundantOperation'} OpFailReason */
+
+
+		//! MARK: Base Classes
+		export class CompositeObject {
+			/**
+			* @desc Class instance ID index.
+			* @type {number}
+			*/
+			static idIndex = 0
+			/**
+			* @desc Collection of all instances of this class.
+			* @type {Map<string, Object>}
+			*/
+			static all = new Map()
+			/**
+			* @desc Unique numeric identifier.
+			* @type {number}
+			*/
+			id
+			/**
+			* @desc Unique string identifier.
+			* @type {string}
+			*/
+			identifier
+			/**
+			* @desc Components that have been added to the object.
+			* @type {Set<Component>}
+			*/
+			components = new Set()
+
+			/**
+			* Creates a CompositeObject.
+			* @param {ObjectProps} props Initial object properties.
+			*/
+			constructor (props={identifier:undefined, components:[], register:true}) {
+				if (props.components)
+					this.addComponents(...props.components)
+				if (props.register?? true)
+					CompositeObject.register(this, props.identifier?? undefined)
+			}
+
+			/**
+			* Register an instance to the class' list.
+			* @param {CompositeObject} object
+			* @param {string} identifier Optional string identifier that can also be used to access the object.
+			*/
+			static register(object, identifier=undefined) {
+				this.all.set(this.idIndex, object)
+				object.id = this.idIndex
+				object.identifier = identifier
+				if (identifier) {
+					if (this.all.has(identifier))
+						throw new Error(`Identifier '${identifier}' is not unique${this.name}`)
+					this.all.set(identifier, object)
+					object.identifier = identifier
+				}
+				this.idIndex++
+			}
+			/**
+			* Unregister an instance from the class' list.
+			* @param {CompositeObject} object
+			*/
+			static unregister(object) {
+				this.all.delete(object.id)
+				if (object.identifier)
+					this.all.delete(object.identifier)
+			}
+			/**
+			* Gets an instance from the class' list.
+			* @param {number | string} id The object's numeric ID or string identifier.
+			* @return {CompositeObject | null}
+			*/
+			static get(id) {
+				if (this.all.has(id))
+					return this.all.get(id)
+				else return null
+			}
+
+			get isRegistered() { return typeof(this.id) === 'number' }
+			get isOriginal() { return this.isRegistered && CompositeObject.all.get(this.id) === this }
+			get isClone() { return this.isRegistered && CompositeObject.all.get(this.id) !== this }
+
+			toString() {
+				return `[(${this.id}) ${this.identifier?? 'no identifier'}${this.hasComponents(CCountable)? ` x ${this.count}`:''}]`
+			}
+			/**
+			* Adds components to the object.
+			* @param {Component} components
+			*/
+			addComponents(...components) {
+				for (const component of components) {
+					if (this.components.has(component)) continue
+					component.addTo(this)
+				}
+				return this
+			}
+			/**
+			* Returns whether the object is missing any of the given components.
+			* @param  {...Component} components
+			*/
+			hasComponents(...components) {
+				return this.components.isSupersetOf(new Set(components))
+			}
+			/**
+			* Creates a clone of the object.
+			*/
+			clone() {
+				const obj = new CompositeObject({register: false})
+				Object.defineProperties(obj, Object.getOwnPropertyDescriptors(CompositeObject.get(this.id)))
+				obj.addComponents(...this.components)
+				return obj
+			}
+			delete() {
+				if (this.isOriginal)
+					CompositeObject.unregister(this)
+				this.id = null
+				this.identifier = null
+				for (const component of this.components)
+					if (component.__delete)
+						component.__delete(this)
+			}
+		}
+		export class Component {
+			/**
+			* @desc Components this component depends on to function. Will be added along with it, if not present.
+			* @type {Array<Component>}
+			*/
+			static dependencies = []
+			/**
+			* @desc Operations to be executed when sets of Components are present in the same object.
+			* @type {Array<Array<Set<Component>, (object: CompositeObject) => void>>}
+			*/
+			static synergies = []
+
+			/**
+			* Add the component to an object.
+			* @param {CompositeObject} objects
+			*/
+			static addTo(...objects) {
+				if (this.dependencies.length > 0)
+					for (const dependency of this.dependencies)
+						for (const object of objects)
+							dependency.addTo(object)
+				const descriptors = Object.getOwnPropertyDescriptors(this)
+				delete descriptors.prototype
+				delete descriptors.length
+				delete descriptors.dependencies
+				delete descriptors.name
+				for (const object of objects) {
+					for (const [key, attributes] of Object.entries(descriptors)) {
+						if (key.startsWith('__')) continue
+						if (attributes.value && !(attributes.value instanceof Function))
+							attributes.value = structuredClone(attributes.value)
+						// if (attributes.value && attributes.value instanceof Function)
+						// 	attributes.value = (...args) => this[key].apply(object, args)
+						Object.defineProperty(object, key, attributes)
+					}
+					object.components?.add(this)
+					if (this.__postAddition)
+						this.__postAddition(object)
+					Synergy.evaluate(object, this)
+				}
+			}
+		}
+		export class Synergy {
+			static all = []
+			components = new Set()
+			operation
+
+			/**
+			* @param {Array<Component>} components
+			* @param {SynergyOperation} operation
+			*/
+			constructor(components, operation) {
+				this.components = new Set(components)
+				this.operation = operation
+			}
+
+			/**
+			* Register a new component synergy.
+			* @param {Array<Component>} components
+			* @param {SynergyOperation} operation
+			*/
+			static register(components, operation) {
+				if (components.length < 2)
+					throw new Error(`Synergies require 2 or more Components`)
+				this.all.push(new Synergy(components, operation))
+				return this
+			}
+			/**
+			* Evaluates what synergies are applicable to the object and applies them.
+			* @param {CompositeObject} object
+			* @param {Component} lastAdded
+			*/
+			static evaluate(object, lastAdded) {
+				const applicableSynergies = this.all.filter(s => {
+					const synergyComponentSet = new Set(s.components)
+					return object.components?.isSupersetOf(synergyComponentSet)
+					&& (
+						object.components
+							?.intersection(synergyComponentSet)
+							.difference(new Set([lastAdded]))
+							.size
+						=== synergyComponentSet.size-1
+					)
+				})
+				for (const synergy of applicableSynergies)
+					synergy.operation.apply(object)
+			}
+		}
+		export class GameEvent {
+			/**
+			* @desc Collection of all instances of this class.
+			* @type {Map<string, Object>}
+			*/
+			static all = new Map()
+			/**
+			* @desc The event's name and identifier.
+			* @type {string}
+			*/
+			name
+			/**
+			* @desc The event's handler.
+			* @type {EventHandler}
+			*/
+			fn
+			/**
+			* @desc Array of strings describing the arguments required by the event. Only for help debugging, not strictly required.
+			* @type {EventHandler}
+			*/
+			arguments = []
+			/**
+			* @desc Array of functions listening to the event.
+			* @type {Array<EventHandler>}
+			*/
+			listeners = new Set()
+			/**
+			* @desc How many times the event has been triggered.
+			* @type {number}
+			*/
+			timesTriggered = 0
+
+			/**
+			* Creates an event.
+			* @param {string} name Name and identifier.
+			* @param {EventHandler} fn
+			* @param {boolean} register
+			*/
+			constructor(name, fn, args=[], register=true) {
+				this.name = name
+				this.fn = fn
+				if (args?? false)
+					this.arguments = args
+				if (register?? true)
+					GameEvent.register(this)
+			}
+
+			/**
+			* Register an instance to the class' list.
+			* @param {GameEvent} event
+			*/
+			static register(event) {
+				if (this.all.has(event.name))
+					throw new Error(`Identifier '${event.name}' is not unique`)
+				else
+					this.all.set(event.name, event)
+			}
+			/**
+			* Unregister an instance from the class' list.
+			* @param {GameEvent} event
+			*/
+			static unregister(event) {
+				this.all.delete(event.name)
+			}
+			/**
+			* Gets an instance from the class' list.
+			* @param {number | string} name
+			* @return {GameEvent | null}
+			*/
+			static get(name) {
+				if (this.all.has(name))
+					return this.all.get(name)
+				else return null
+			}
+			static trigger(name, triggerer, ...args) {
+				if (!this.all.has(name))
+					throw new Error(`Trying to trigger unexistent event '${name}'`)
+				this.get(name).trigger(triggerer, ...args)
+			}
+
+			/**
+			* Triggers the event.
+			* @param {CompositeObject} triggerer Object triggering the event.
+			* @param {...any} args
+			*/
+			trigger(triggerer, ...args) {
+				if (this.arguments && args.length < this.arguments)
+					throw new Error(`Trying to trigger event '${this.name}' with insufficient arguments. Arguments required: ${this.arguments.join(', ')}`)
+				this.timesTriggered++
+				if (this.fn)
+					this.fn.apply(this, [triggerer, ...args])
+				for (const listener of this.listeners)
+					listener.apply(this, [triggerer, ...args])
+			}
+			/**
+			* Register a handler function to be triggered with this event.
+			* @param {EventHandler} fn
+			*/
+			listen(fn) {
+				this.listeners.add(fn)
+			}
+			/**
+			* Unregister a handler function from being triggered with this event.
+			* @param {EventHandler} fn
+			*/
+			unlisten(fn) {
+				this.listeners.delete(fn)
+			}
+		}
+		export class Stat {
+			/**
+			* @desc The map of calculations used by different stats.
+			* @type {Map<string, (this: Stat) => number>}
+			*/
+			static _calculations = new Map([['default', function(stat) {return stat.value + stat.add + stat.value * stat.mult}]])
+			/**
+			* @desc The map of Stat prototypes, with their respective default values.
+			* @type {Map<string, (this: Stat) => number>}
+			*/
+			static _prototypes = new Map()
+			name
+			value
+			add
+			mult
+			min
+			max
+			/**
+			* @desc To which nearest numerical value the stat should be rounded to when calculated.
+			* @type {number}
+			*/
+			roundToNearest
+			/**
+			* @desc Key for the calculation to be used when calculating a final value for the Stat.
+			* @type {number}
+			*/
+			calculationKey
+
+
+			/**
+			* Creates a new Stat instance. If there's an existing prototype under `name`, a copy of it will be returned with its properties replaced by present arguments.
+			* @param {string} name
+			* @param {StatProps} defaults
+			* @param {number} calculationKey Key for the calculation to be used when calculating a final value for the Stat.
+			*/
+			constructor(name, defaults={value: 0, add: 0, mult: 0, min:0, max: Number.MAX_VALUE, roundToNearest: 1}, calculationKey='default') {
+				const original = Stat._prototypes.get(name)
+				if (original) {
+					this.name = original.name
+					this.value = original.value
+					this.add = original.add
+					this.mult = original.mult
+					this.min = original.min
+					this.max = original.max
+					this.roundToNearest = original.roundToNearest
+					this.calculationKey = original.calculationKey
+				} else {
+					this.name = name
+					this.value = defaults.value?? 0
+					this.add = defaults.add?? 0
+					this.mult = defaults.mult?? 0
+					this.min = defaults.min?? 0
+					this.max = defaults.max?? Number.MAX_VALUE
+					this.roundToNearest = defaults.roundToNearest?? 1
+					this.calculationKey = calculationKey
+					Stat._prototypes.set(name, this)
+					Stat[name] = this
+				}
+			}
+
+			/**
+			* Returns a final value for the stat.
+			* @param {boolean} round Whether the value should be rounded.
+			*/
+			calculate(round=true) {
+				const result = (Stat._calculations.get(this.calculationKey?? 'default')?? Stat._calculations.get('default'))(this)
+				if (round)
+					if (this.roundToNearest === 1)
+						return Math.round(result)
+					else
+						return Math.round(result / this.roundToNearest) * this.roundToNearest
+				return result
+			}
+			new(values={value: this.value, add: this.add, mult: this.mult, min:0, max: this.max, roundToNearest: this.roundToNearest}) {
+				const newStat = new Stat(this.name)
+				newStat.name = values.name?? this.name
+				newStat.value = values.value?? this.value
+				newStat.add = values.add?? this.add
+				newStat.mult = values.mult?? this.mult
+				newStat.min = values.min?? this.min
+				newStat.max = values.max?? this.max
+				newStat.roundToNearest = values.roundToNearest?? this.roundToNearest
+				return newStat
+			}
+		}
+		export class OperationFail {
+			/**
+			* @desc The object relevant to the failed operation.
+			* @type {CompositeObject}
+			*/
+			object
+			/**
+			* @desc Brief string describing the reason why the operation failed.
+			* @type {OpFailReason}
+			*/
+			reason
+			/**
+			* @desc Error object including provided message and stack trace.
+			* @type {OpFailReason}
+			*/
+			error
+
+			/**
+			* @param {CompositeObject} object The object relevant to the failed operation.
+			* @param {OpFailReason} reason Brief string describing the reason why the operation failed.
+			*/
+			constructor(operation, object, reason, message) {
+				this.operation = operation
+				this.object = object
+				this.reason = reason
+				this.error = new Error(`${operation} - ${object} - ${reason}\n${message}`)
+			}
+
+			/**
+			* Log the operation's properties, message and stack trace to the console.
+			* @param {'info' | 'warn' | 'error'} level 
+			*/
+			log(level='warn') {
+				console[level](this.error)
+			}
+		}
+		//# MARK: CompositeObjects
+		export class Interaction extends CompositeObject {
+			/**
+			* @desc Collection of all instances of this class.
+			* @type {Map<string, Object>}
+			*/
+			static all = new Map()
+			/**
+			* @desc Interaction name. Conventionally a verb describing what it does.
+			* @type {string}
+			*/
+			name
+			/**
+			* @desc A short description for the interaction.
+			* @type {string}
+			*/
+			description
+			/**
+			* @desc Function that consists the interaction itself.
+			* @type {InteractionFunction}
+			*/
+			fn
+
+			/**
+			* Creates an Interaction.
+			* @param {string} name Interaction name. Conventionally a verb describing what it does.
+			* @param {string} description A short description for the interaction.
+			* @param {Match} match What input(s) should match the interaction.
+			* @param {InteractionFunction} fn Function that consists the interaction itself.
+			* @param {ObjectProps} props Initial object properties.
+			*/
+			constructor(name, description, match, fn, props={identifier:undefined, components:[], register:true}) {
+				super({identifier: props.identifier?? `interaction_${name}`, components: props.components, register: props.register?? true})
+				this.addComponents(CMatch)
+				this.name = name
+				this.description = description
+				this.match = match
+				this.fn = fn
+				if (props.register?? true)
+					Interaction.register(this, props.identifier?? name)
+			}
+
+			/**
+			* Register an instance to the class' list.
+			* @param {Interaction} interaction
+			*/
+			static register(interaction) {
+				if (this.all.has(interaction.name))
+					throw new Error(`Identifier '${interaction.name}' is not unique`)
+				this.all.set(interaction.name, interaction)
+			}
+			/**
+			* Unregister an instance from the class' list.
+			* @param {Interaction} interaction
+			*/
+			static unregister(interaction) {
+				this.all.delete(interaction.id)
+				if (interaction.identifier)
+					this.all.delete(interaction.identifier)
+			}
+			/**
+			* Gets an instance from the class' list.
+			* @param {number | string} id The object's numeric ID or string identifier.
+			* @return {Interaction | null}
+			*/
+			static get(id) {
+				if (this.all.has(id))
+					return this.all.get(id)
+				else return null
+			}
+			/**
+			* Call the interaction using `object` as the `this`.
+			* @param {CompositeObject} object
+			*/
+			callFrom(object, ...args) {
+				this.fn(object, ...args)
+				if (object.hasComponents(CInteractable))
+					object.interactions[`${this.name}Count`] += 1
+			}
+			delete() {
+				Interaction.unregister(this)
+				CompositeObject.all.forEach(object => {
+					if (object.hasComponents(CInteractable))
+						object.removeInteraction(this)
+				})
+				super.delete()
+			}
+		}
+		export class AArea extends CompositeObject {
+			/**
+			* @desc Collection of all instances of this class.
+			* @type {Map<string, Object>}
+			*/
+			static all = new Map()
+			/**
+			* @desc Array comprising of areas this area connects to.
+			* @type {Array<AArea}
+			*/
+			connections = []
+			visited = 0
+
+			/**
+			* Creates an area object.
+			* @param {string} identifier
+			* @param {AreaProps} props
+			*/
+			constructor(identifier, props={name:'', introduction:'', description:'', components:[], register:true}) {
+				super({identifier, components: props.components?? [], register: props.register?? true})
+				this.addComponents(CStrings, CInventory)
+				this.setString('name', props.name?? identifier)
+				this.registerShorthand('name')
+				if (props.introduction?? false) {
+					this.setString('intro', props.introduction)
+					this.registerShorthand('intro')
+				}
+				if (props.description?? false) {
+					this.setString('description', props.description)
+					this.registerShorthand('description')
+				}
+				if (props.register?? true)
+					AArea.register(this)
+			}
+
+			/**
+			* Register an instance to the class' list.
+			* @param {Area} area
+			*/
+			static register(area) {
+				if (this.all.has(area.identifier))
+					throw new Error(`Identifier '${area.identifier}' is not unique`)
+				this.all.set(area.identifier, area)
+			}
+			/**
+			* Unregister an instance from the class' list.
+			* @param {Area} area
+			*/
+			static unregister(area) {
+				this.all.delete(area.id)
+				if (area.identifier)
+					this.all.delete(area.identifier)
+			}
+			/**
+			* Gets an instance from the class' list.
+			* @param {number | string} id The object's numeric ID or string identifier.
+			* @return {AArea | null}
+			*/
+			static get(id) {
+				if (this.all.has(id))
+					return this.all.get(id)
+				else return null
+			}
+
+			/**
+			* Adds an area to this area's connections.
+			* @param {AArea} area
+			* @param {boolean} twoway Whether the connection should be added from the other side.
+			*/
+			addConnection(area, twoway=false) {
+				if (this.connections.includes(area)) {
+					console.warn(`Trying to add existing connection between '${this.identifier}' and '${area.identifier}'`)
+					return this
+				}
+				this.connections.push(area)
+				this.connections[area.identifier] = area
+				if (twoway)
+					area.addConnection(this)
+				return this
+			}
+			/**
+			* Removes an area from this area's connections.
+			* @param {AArea} area
+			* @param {boolean} twoway Whether the connection should be removed from the other side.
+			*/
+			removeConnection(area, twoway=false) {
+				if (!this.connections.includes(area)) {
+					console.warn(`Trying to remove nonexistent connection between '${this.identifier}' and '${area.identifier}'`)
+					return this
+				}
+				this.connections.splice(this.connections.indexOf(area), 1)
+				delete this.connections[area.identifier]
+				if (twoway)
+					area.removeConnection(this)
+				return this
+			}
+			delete() {
+				AArea.unregister(this)
+				for (const object of this.inventory)
+					object.delete()
+				super.delete()
+			}
+		}
+		//# MARK: Components
+		export class CMatch extends Component {
+			/**
+			* @desc A string, list of strings, or RegExp rule describing what inputs should match the object. If an array, ideally from most specific/longest to least specific/shortest.
+			* @type {string | Array<string> | RegExp}
+			*/
+			static match
+
+			/**
+			* Returns the result of matching the input string to the object's `match`.
+			* @param {string} input
+			* @returns {RegExpMatchArray}
+			*/
+			static matchAgainst(input) {
+				if (this.match instanceof Array)
+					return input.match(this.match.find(e => input.match(e)))
+				return input.match(this.match)
+			}
+		}
+		export class CTags extends Component {
+			/**
+			* @desc Strings describing properties of the object. Conventionally uppercase.
+			* @type {Set<String>}
+			*/
+			static tags = new Set()
+
+			/**
+			* Adds given tag to object.
+			* @param {string} tag
+			* @this {CompositeObject}
+			*/
+			static addTag(tag) {
+				this.tags.add(tag)
+				return this
+			}
+			/**
+			* Adds given tags to object.
+			* @param  {Array<string>} tags
+			* @this {CompositeObject}
+			*/
+			static addTags(...tags) {
+				for (const tag of tags)
+					this.addTag(tag)
+				return this
+			}
+			/**
+			* Removes given tag from object.
+			* @param {string} tag
+			* @this {CompositeObject}
+			*/
+			static removeTag(tag) {
+				this.tags.delete(tag)
+				return this
+			}
+			/**
+			* Removes given tags from object.
+			* @param  {...any} tags
+			* @this {CompositeObject}
+			*/
+			static removeTags(...tags) {
+				for (const tag of tags)
+					this.removeTag(tag)
+				return this
+			}
+			/**
+			* Returns whether the object has the given tag.
+			* @param {string} tag
+			*/
+			static hasTag(tag) {
+				return this.tags.has(tag)
+			}
+			/**
+			* Returns whether the object has all the given tags.
+			* @param {string} tag
+			*/
+			static hasTags(...tags) {
+				for (const tag of tags)
+					if (!this.hasTag(tag))
+						return false
+				return true
+			}
+		}
+		export class CStrings extends Component {
+			/**
+			* @desc A map containing global strings in the module itself.
+			* @type {Map<string, string>}
+			*/
+			static __globalStrings = new Map()
+			/**
+			* @desc A map containing global replacers in the module itself.
+			* Placeholders should be preceded by the character `$`; `\$` will be ignored.
+			*
+			* Capitalized placeholders will capitalize the string returned by the replacer.
+			* Uppercase placeholders will capitalize all words in the string returned by the replacer.
+			* @type {Map<string, (this: CompositeObject) => string>}
+			*/
+			static __globalPlaceholders = new Map()
+			/**
+			* @desc A map containing the object's strings.
+			* @type {Map<string, string | () => string>}
+			*/
+			static strings = new Map()
+			/**
+			* @desc A map containing the object's placeholder strings and their replacement functions.
+			* Placeholders should be preceded by the character `$`; `\$` will be ignored.
+			*
+			* Capitalized placeholders will capitalize the string returned by the replacer.
+			* Uppercase placeholders will capitalize all words in the string returned by the replacer.
+			* @type {Map<string, (this: CompositeObject) => string>}
+			*/
+			static placeholders = new Map()
+
+			/**
+			* @param {string} key
+			* @param {string | () => string} string
+			* @this {CompositeObject}
+			*/
+			static setString(key, string) {
+				this.strings.set(key, string)
+				return this
+			}
+			/**
+			* @param {...Array<string, string>} pairs
+			* @this {CompositeObject}
+			*/
+			static setStrings(...pairs) {
+				for (const pair of pairs)
+					this.setString(...pair)
+				return this
+			}
+			/**
+			* @param {string} key Key to the string.
+			* @param {boolean} defaultFallback Whether the default string of same key should be returned, if it exists.
+			*/
+			static getString(key, defaultFallback=false) {
+				let found = this.strings.get(key)?? ''
+				if (found === '' && defaultFallback)
+					found = Defaults.getString(key)?? ''
+				if (typeof(found) === 'function')
+					return found.apply(this)
+				else
+					return found
+			}
+			/**
+			* Register a string shorthand to the object itself. The string can then be accessed as `object.$<shorthand>`.
+			* @param {string} shorthand The name of the shorthand. Lowercase alphanumeric and underscore only.
+			* @param {string} key The key to the string it should refer to. Defaults to the same as the shorthand.
+			* @param {boolean} registerPlaceholder Whether the shorthand should be registered as a replacer as well.
+			*/
+			static registerShorthand(shorthand, key=shorthand, registerPlaceholder=true) {
+				if (shorthand.match(/[^\w]/))
+					throw new Error(`Trying to register string shorthand '${shorthand}', which contains non-word characters.`)
+				if (this['$' + shorthand])
+					delete this['$' + shorthand]
+				Object.defineProperty(this, `$${shorthand}`, {
+					get() { return this.getString(key) },
+					set(v) { this.setString(key, v) },
+					configurable: true
+				})
+				if (registerPlaceholder)
+					this.registerPlaceholder(shorthand, (object) => object.getString(key))
+				return this
+			}
+			/**
+			* Returns a copy of the string with all placeholders replaced.
+			* Placeholders should be preceded by the character `$`; `\$` will be ignored.
+			*
+			* Capitalized placeholders will capitalize the string returned by the replacer.
+			* Uppercase placeholders will capitalize all words in the string returned by the replacer.
+			* @param {string} string
+			*/
+			static parseString(string, recursive=true) {
+				let parsed = string.slice()
+				let objectPHs = Array.from(this.placeholders.keys())
+				let foundPHs = Array.from(parsed.matchAll(/(?<!\\)\$([\w]+)/g)).map(m => m[1])
+					.filter(p => objectPHs.includes(p.toLowerCase()))
+				while (foundPHs.length > 0) {
+					for (const found of foundPHs)
+						if (objectPHs.includes(found.toLowerCase()))
+							parsed = parsed.replace(new RegExp(`\\$${found}`),
+								found[0] === found[0].toUpperCase()?
+								(found === found.toUpperCase()?
+									capitalize(this.placeholders.get(found.toLowerCase())(this), true)
+									: capitalize(this.placeholders.get(found.toLowerCase())(this)))
+								: this.placeholders.get(found.toLowerCase())(this)
+							)
+					if (recursive)
+						foundPHs = Array.from(parsed.matchAll(/(?<!\\)\$([\w]+)/g)).map(m => m[1])
+							.filter(p => objectPHs.includes(p.toLowerCase()))
+					else break
+				}
+				return parsed
+			}
+			/**
+			* Registers a placeholder and replacer function for parsing strings.
+			* Placeholders should be preceded by the character `$`; `\$` will be ignored.
+			*
+			* Capitalized placeholders will capitalize the string returned by the replacer.
+			* Uppercase placeholders will capitalize all words in the string returned by the replacer.
+			* @param {string} placeholder Placeholder to be sought and replaced.
+			* @param {(object: CompositeObject) => string} replacer Function that will return the replacement string.
+			*/
+			static registerPlaceholder(placeholder, replacer) {
+				if (placeholder.match(/\s/))
+					throw new Error(`Trying to register string placeholder '${placeholder}', which contains whitespace characters.`)
+				this.placeholders.set(placeholder, replacer)
+			}
+		}
+		export class CVariables extends Component {
+			/**
+			* @desc Map from strings to variables pertaining to the object's dynamic functionality.
+			* @type {Map<string, any>}
+			*/
+			static vars = new Map()
+
+			/**
+			* Registers a new variable in the object.
+			* @param {string} name
+			* @param {any} initialValue
+			* @this {CompositeObject}
+			*/
+			static registerVariable(name, initialValue=undefined) {
+				this.vars.set(name, {value: initialValue, initial: initialValue})
+				return this
+			}
+			/**
+			* Sets the value of a variable in the object.
+			* @param {string} name
+			* @param {any} value
+			* @this {CompositeObject}
+			*/
+			static setVar(name, value) {
+				if (!this.vars.has(name))
+					return new OperationFail('setVar', this, "notFound", `Trying to set variable '${name}' on '${this}', but it isn't registered`).log()
+				this.vars.get(name).value = value
+				return this
+			}
+			/**
+			* Returns the value of a variable in the object. Returns `null` if variable does not exist in the object.
+			* @param {string} name
+			* @returns {any | null}
+			*/
+			static getVar(name) {
+				return this.vars.has(name)?
+					this.vars.get(name).value
+					: new OperationFail('getVar', this, "notFound", `Trying to get variable '${name}' on '${this}', but it isn't registered`).log()
+			}
+			/**
+			* Resets the variable to its registered initial value. Returns that value.
+			* @param {string} name
+			*/
+			static resetVar(name) {
+				if (!this.vars.has(name))
+					return new OperationFail('resetVar', this, "notFound", `Trying to reset variable '${name}' on '${this}', but it isn't registered`).log()
+				const variable = this.vars.get(name)
+				variable.value = variable.initial
+				return variable.value
+			}
+			/**
+			* Change the value of a variable in the object by performing an operation on current value. Returns the updated value.
+			* @param {string} name
+			* @param {(value: any) => any} operation
+			* @param {any} valueIfUnset
+			* @returns {any}
+			*/
+			static alterVar(name, operation, valueIfUnset=0) {
+				if (!this.vars.has(name))
+					return new OperationFail('alterVar', this, "notFound", `Trying to alter variable '${name}' on '${this}', but it isn't registered`).log()
+				const variable = this.vars.get(name)
+				return variable.value = operation(variable.value === undefined? valueIfUnset : variable.value)
+			}
+		}
+		export class CDescriptors extends Component {
+			/**
+			* @desc Array of components this component depends on to function.
+			* @type {Map<string, any>}
+			*/
+			static dependencies = [CStrings]
+
+
+			/**
+			* Sets the object's descriptors.
+			* @param {string} article Appropriate article for the object (i.e. a/an/the).
+			* @param {string} singular Appropriate singular for the object.
+			* @param {string} description Description for the object. Defaults to "article singular".
+			* @param {DescriptorProps} props Extra properties. `"they"` will always replace the pronoun if the object has CCountable and `count > 1`.
+			* @this {CompositeObject}
+			*/
+			static setDescriptors(article, singular, description=article+' '+singular, props={plural:singular+'s', pronoun:'it'}) {
+				this.setString('an', article)
+				this.registerShorthand('an')
+				this.setString('it', props.pronoun?? 'it')
+				this.registerShorthand('it')
+				this.setString('singular', singular)
+				this.registerShorthand('singular')
+				this.setString('plural', props.plural?? singular+'s')
+				this.registerShorthand('plural')
+				this.setString('description', description)
+				this.registerShorthand('description')
+				this.setString('name', function() { return (this.hasComponents(CCountable) && this.count > 1)?
+					`${this.count} ${this.$plural?? ''}`
+					: `${this.$an?? ''} ${this.$singular?? ''}`
+				})
+				this.registerShorthand('name', 'name', false)
+				this.registerPlaceholder('name', function(object) { return object.getString('name') })
+				this.setString('they', function() {return (this.hasComponents(CCountable) && this.count > 1)? 'they' : this.getString('it') })
+				this.registerShorthand('they')
+				return this
+			}
+		}
+		export class CCountable extends Component {
+			/**
+			* @desc Amount of items the object represents.
+			* @type {number}
+			*/
+			static c = 1
+
+			static get count() { return this.c }
+			static set count(v) {
+				this.c = v
+				if (v <= 0 && this.hasComponents(COwnable))
+					this.owner?.removeItem(this)
+				if (v < 0) {
+					console.warn(`Item ${this} was set to negative value. Clamped to 0`)
+					this.c = 0
+				}
+			}
+			/**
+			* Splits some amount of the item off and returns it as a new instance.
+			* @param {number} quantity
+			* @return {CompositeObject}
+			*/
+			static split(quantity) {
+				const newItem = this.clone()
+				this.count -= quantity
+				newItem.count = quantity
+				if (this.hasComponents(COwnable))
+					newItem.setOwner(undefined)
+				return newItem
+			}
+		}
+		export class CInteractable extends Component {
+			/**
+			* @desc A set of Interaction instances.
+			* @type {Set<Interaction>}
+			*/
+			static interactions = new Set()
+
+			static get interactions() { return new Set(this.interactions) }
+			/**
+			* Adds the interaction to the object.
+			* @param {Interaction | string | number} interaction Interaction instance or its name or ID.
+			* @this {CompositeObject}
+			*/
+			static addInteraction(interaction) {
+				// debugger
+				if (typeof(interaction) === 'string' || typeof(interaction) === 'number') {
+					interaction = Interaction.get(interaction)
+					if (interaction === null)
+						return new OperationFail('addInteraction', this, "notFound", `Trying to add interaction '${interaction}' to '${this}', but it doesn't exist.`)
+				}
+				const caller = (...args) => {
+					this.interactions[`${interaction.name}Count`] += 1
+					return interaction.fn.apply(this, ...args)
+				}
+				if (this.findInteraction(interaction.name, false))
+					return this
+				this.interactions.add(interaction)
+				this.interactions[interaction.name] = caller
+				this.interactions[`${interaction.name}Count`] = 0
+				return this
+			}
+			/**
+			* Adds the interactions to the object.
+			* @param {Array<Interaction>} interactions
+			* @this {CompositeObject}
+			*/
+			static addInteractions(...interactions) {
+				for (const interaction of interactions)
+					this.addInteraction(interaction)
+				return this
+			}
+			/**
+			* Removes the interaction from the object.
+			* @param {Interaction | string | number} interaction Interaction instance or its name or ID.
+			* @this {CompositeObject}
+			*/
+			static removeInteraction(interaction) {
+				if (typeof(interaction) === 'string' || typeof(interaction) === 'number') {
+					interaction = this.findInteraction(interaction, false)
+					if (interaction instanceof OperationFail)
+						return interaction
+				}
+				this.interactions.delete(interaction)
+				delete this.interactions[interaction.name]
+				delete this.interactions[`${interaction.name}Count`]
+			}
+			/**
+			* Removes the interactions from the object.
+			* @param {Array<Interaction>} interactions
+			* @this {CompositeObject}
+			*/
+			static removeInteractions(...interactions) {
+				for (const interaction of interactions)
+					this.removeInteraction(interaction)
+				return this
+			}
+			/**
+			* Gets the interaction by name or ID. Returns it if found, false if not found. Calls the interaction if `call == true`.
+			* @param {string | number} identifier
+			* @param {boolean} call
+			* @return {Interaction | null}
+			*/
+			static findInteraction(identifier, call=true, ...args) {
+				for (const interaction of this.interactions.values())
+					if (interaction.name === identifier || interaction.id === identifier) {
+						if (call)
+							interaction.callFrom(this, ...args)
+						return interaction
+					}
+				return null
+			}
+			/**
+			* Finds the first matching Interaction. Returns it if found, false if not found. Calls the interaction if `call == true`.
+			* @param {string} input
+			* @param {boolean} call
+			* @return {Interaction | null}
+			*/
+			static matchInteraction(input, call=true, ...args) {
+				const matches = []
+				for (const interaction of this.interactions.values())
+					if (interaction.matchAgainst(input)) {
+						matches.push([interaction.matchAgainst(input), interaction])
+					}
+				matches.sort((a, b) => b[0][0].length - a[0][0].length)
+				if (matches.length === 0)
+					return null
+				if (call)
+					matches[0][1].callFrom(this, ...args)
+				return matches[0][1]
+			}
+		}
+		export class CInventory extends Component {
+			static dependencies = [CStrings]
+			static inventory = []
+
+			static __delete(object) {
+				for (const obj of object.inventory)
+					obj.delete()
+			}
+
+			/**
+			* Gives an item to the object's inventory.
+			* @param {CompositeObject} item
+			* @param {number} quantity
+			* @this {CompositeObject}
+			* @return {CompositeObject | OperationFail}
+			*/
+			static giveItem(item, quantity=undefined) {
+				if (quantity <= 0)
+					return new OperationFail('giveItem', item, 'valueError', `Trying to give zero or negative quantity of ${item} to ${this}`).log()
+				if (!item.hasComponents(COwnable))
+					return new OperationFail('giveItem', item, 'missingComponent', `Trying to give item ${item}, which does not have the COwnable component, to ${this}`).log()
+				if (item.owner === this)
+					return new OperationFail('giveItem', item, 'redundantOperation', `Trying to give item ${item} to its own owner ${this}`).log()
+				//* Item is countable
+				if (item.hasComponents(CCountable)) {
+					const inInventory = this.findByID(item.id)
+					//* This already has an instance of item in its inventory
+					if (inInventory) {
+						//* Item already has an owner
+						if (item.owner)
+							inInventory.count += Math.min(quantity?? item.count, item.count)
+						//* Item does not have an owner
+						else
+							inInventory.count += quantity?? item.count
+						item.count -= Math.min(quantity?? item.count, item.count)
+					}
+					//* This does not have an instance of item in its inventory
+					else
+						//* Item already has an owner
+						if (item.owner) {
+							const newItem = item.split(Math.min(quantity?? item.count, item.count))
+							this.inventory.push(newItem)
+							newItem.setOwner(this)
+						}
+						//* Item does not have an owner
+						else {
+							this.inventory.push(item)
+							item.setOwner(this)
+								.count = quantity?? item.count
+						}
+				}
+				//* Item is not countable
+				else {
+					this.inventory.push(item)
+					item.setOwner(this)
+				}
+				return this
+			}
+			/**
+			* Takes an item from the object's inventory and returns it, if present, or false.
+			* @param {CompositeObject} item
+			* @param {number} quantity
+			* @this {CompositeObject}
+			* @return {CompositeObject | OperationFail}
+			*/
+			static takeItem(item, quantity=undefined) {
+				if (quantity <= 0)
+					return new OperationFail('takeItem', item, 'valueError', `Trying to take zero or negative quantity of ${item} to ${this}`).log()
+				if (!item.hasComponents(COwnable))
+					return new OperationFail('takeItem', item, 'missingComponent', `Trying to take item ${item}, which is not an OwnableItem, from ${this}`).log()
+				if (!this.findByID(item.id))
+					return new OperationFail('takeItem', item, 'notFound', `Trying to take item ${item}, which is not owned by ${this}`).log()
+				//* Item is countable
+				if (item.hasComponents(CCountable))
+					return item.split(quantity?? item.count)
+				//* Item is not countable
+				else {
+					this.removeItem(item)
+					return item
+				}
+			}
+			/**
+			* Removes the item from the object's inventory and returns it, if present, or false, if not present.
+			* @param {CompositeObject} item
+			* @return {CompositeObject | OperationFail}
+			*/
+			static removeItem(item) {
+				if (!this.findByID(item.id))
+					return new OperationFail('takeItem', item, 'notFound', `Trying to remove item ${item}, which is not owned by ${this}`).log()
+				this.inventory.splice(this.inventory.indexOf(item), 1)
+				if (item.hasComponents(COwnable))
+					item.setOwner(undefined)
+				return item
+			}
+			/**
+			* Finds and returns an item matching the ID from the object's inventory, if present, or false.
+			* @param {number | string} id
+			* @return {CompositeObject | false}
+			*/
+			static findByID(id) {
+				if (typeof(id) === 'number')
+					return this.inventory.find(i => i.id === id)?? false
+				if (typeof(id) === 'string')
+					return this.inventory.find(i => i.identifier === id)?? false
+			}
+			/**
+			* Finds and returns an item matching the input from the object's inventory, if present, or false.
+			* @param {number | string} id
+			* @return {CompositeObject | false}
+			*/
+			static findByMatch(input) {
+				return this.inventory.find(i => i.hasComponents(CMatch) && i.matchAgainst(input))?? false
+			}
+			/**
+			* Sets inventory strings.
+			*
+			* If using the default `look` interaction, it's worth including the `description` in `inventory`, as the interaction uses the `inventory` string rather than `description`.
+			* @param {string} inventory Template string displaying the inventory.
+			* @param {string} list_item String describing each item in the inventory list.
+			*/
+			static setInventoryStrings(inventory, list_item) {
+				this.setString('inventory', inventory)
+				this.setString('list_item', list_item)
+			}
+		}
+		export class COwnable extends Component {
+			static dependencies = [CInteractable]
+			/**
+			* @desc What this object is owned by.
+			* @type {Map<string, any>}
+			*/
+			static owner
+
+			static __postAddition(object) {
+				object.addInteractions(
+					Interaction.get('take'),
+					Interaction.get('drop')
+				)
+			}
+			static __delete(object) {
+				object.owner.removeItem(object)
+			}
+
+			static get owner() {
+				return this.owner
+			}
+
+			static setOwner(newOwner) {
+				this.owner = newOwner
+				return this
+			}
+		}
+		export class CLocation extends Component {
+			/**
+			* @desc The area where the object is located.
+			* @type {AArea}
+			*/
+			static location
+
+			/**
+			* Moves the object to a given area.
+			* @param {AArea} area
+			*/
+			static moveTo(area) {
+				if (this.hasComponents(COwnable) && this.owner instanceof AArea && this.owner === this.location)
+					area.giveItem(this)
+				this.location = area
+				if (this.hasComponents(CInventory))
+					for (const object of this.inventory)
+						if (object.hasComponents(CLocation))
+							object.moveTo(area)
+			}
+		}
+		export class CStats extends Component {
+			/**
+			* @desc Map of stats the object has.
+			* @type {Map<string, Stat>}
+			*/
+			static stats = new Map()
+
+			/**
+			* Register a new stat to the object.
+			* @param {Stat} stat
+			*/
+			static registerStat(stat) {
+				this.stats.set(stat.name, stat)
+				return this
+			}
+			static calculateStat(name, includeEquipment=true) {
+				return this.stats.get(name).calculate()
+			}
+		}
+		export class CEquipmentSlots extends Component {
+			static slots = new Map()
+
+			static addSlot(name) {
+				this.slots.set(name, false)
+				this.slots[name] = false
+				return this
+			}
+			static removeSlot(name) {
+				this.slots.delete(name)
+				delete this.slots[name]
+				return this
+			}
+			static isSlotTaken(name) {
+				return !!this.slots.get(name)
+			}
+			static equipItem(item) {
+				if (!item.hasComponents(CEquippable))
+					return new OperationFail('equipItem', item, 'missingComponent', `Trying to equip '${item}', which is not an CEquippable item, on ${this}`).log()
+				let firstEmptySlot = false
+				let prioritySlot = false
+				for (const slot of item.equippableSlots) {
+					//? Slot not present
+					if (!this.slots.has(slot))
+						continue
+					//? First possible slot found
+					else if (!prioritySlot)
+						prioritySlot = slot
+					//? First empty slot found
+					else if (!this.isSlotTaken(slot))
+						firstEmptySlot = slot
+				}
+				if (!firstEmptySlot)
+					if (!prioritySlot)
+						return new OperationFail('equipItem', item, '', `Trying to equip '${item}', but '${this}' has no usable slots.`).log()
+					else if (this.isSlotTaken(prioritySlot))
+							this.unequipItem(this.slots.get(prioritySlot))
+				this.slots.set(firstEmptySlot || prioritySlot, item)
+				return this
+			}
+			static unequipItem(item) {
+				for (const [slot, equipped] of this.slots.entries())
+					if (equipped === item) {
+						this.slots.set(slot, undefined)
+						return this
+					}
+				return new OperationFail('unequipItem', item, 'notFound', `Trying to equip '${item}', but it was not found or is not equipped.`).log()
+			}
+		}
+		export class CEquippable extends Component {
+			static dependencies = [CDescriptors, COwnable, CStats]
+			static equippableSlots = new Set()
+
+			static __postAddition(object) {
+				object.addInteractions(
+					Interaction.get('equip')
+				)
+			}
+		}
+		//# MARK: Game
+		export class GGame {
+			static #parseFunction
+			static #outputFunction = console.log
+			static player
+			static currentInput
+
+			static get here() { return player.location }
+
+			/**
+			* Set the function to be used as the game's output.
+			* @param {(string: string) => any} fn
+			*/
+			static setOutputFunction(fn) {
+				this.#outputFunction = fn
+			}
+			/**
+			* Set a custom function to be used for parsing.
+			* @param {(input: string) => any} fn
+			*/
+			static setParsingFunction(fn) {
+				this.#parseFunction = fn
+			}
+			static setPlayer(player) {
+				this.player = player
+			}
+			static parse(input) {
+				this.currentInput = input
+				if (this.#parseFunction)
+					this.#parseFunction(input)
+			}
+			static out(string) {
+				this.#outputFunction(string)
+			}
+		}
+		for (const component of [CStrings, CVariables, CInteractable])
+			component.addTo(GGame)
+
+		//! MARK: Defaults
+		export const Defaults = {}
+		for (const component of [CStrings, CVariables, CInteractable])
+			component.addTo(Defaults)
+
+		//# Default Interactions
+		Defaults.addInteractions(
+			new Interaction('inventory',
+				'Check your inventory.',
+				/^((?:(?:take\s+a\s+)?look(?:\s+at)?|inspect|investigate)(?!\s+(?:at|surroundings|around|here|about)))/i,
+				function() { GGame.out(this.$inventory) }
+			),
+			new Interaction('look',
+				'Inspect an object more closely.',
+				/^((?:(?:take\s+a\s+)?look(?:\s+at)?|inspect|investigate)(?!\s+(?:at|surroundings|around|here|about)))/i,
+				function() { GGame.out(this.$description) }
+			),
+			new Interaction('take',
+				'Take an item into your inventory.',
+				/^((?:take|pick\s+up))/i,
+				function(quantity=undefined) { GGame.player.giveItem(this, quantity) }
+			),
+			new Interaction('drop',
+				'Drop an item from your inventory.',
+				/^((?:take|pick\s+up))/i,
+				function(quantity=undefined) { GGame.player.takeItem(this, quantity).moveTo(GGame.here) }
+			),
+			new Interaction('equip',
+				'Equip an item from your inventory.',
+				/^((?<!un)equip)/i,
+				function(slot=undefined) {
+					
+				}
+			),
+		)
+		Defaults.setStrings(
+		)
+		//# Default Synergies
+		Synergy.register([CStrings, CCountable], function() { this.registerPlaceholder('count', (object) => `${object.count}`) })
+		Synergy.register([CStrings, CLocation], function() { this.registerPlaceholder('location', (object) => object.area.$name) })
+		Synergy.register([CDescriptors, CInteractable], function() { this.addInteraction(Interaction.get('look')) })
+		Synergy.register([CInventory, CStrings], function() {
+			this.setString('inventory', `$description Searching it, you find $list.`)
+			this.registerShorthand('inventory')
+			this.setString('list_item', `$name`)
+			this.registerShorthand('list_item')
+			this.registerPlaceholder('list', function(object) { return arrayToList(object.inventory.map(i => i.parseString(object.parseString('$list_item', false)))) || 'nothing' })
+		})
+		Synergy.register([CStrings, CDescriptors], function() { this.setDescriptors('an', 'object', 'An item with unset descriptors.') })
+
+		//! MARK: Helper functions
+		/**
+		* @param {string[]} array
+		*/
+		export function arrayToList(array) {
+			return array.join(", ").replace(/, (.*)$/, " and $1")
+		}
+		export function capitalize(string, all=false) {
+			const pairs = Array.from(string.match(/\b[\w-]+\b/g))
+				.map(e => [e, e[0].toUpperCase() + e.slice(1)])
+			for (const [find, replace] of pairs) {
+				string = string.replace(new RegExp(`\\b${find}\\b`), replace)
+				if (!all)
+					return string
+			}
+			return string
+		}
+	</script>
+	<script id="howler" type="inline-module">
+		/*! howler.js v2.2.4 | (c) 2013-2020, James Simpson of GoldFire Studios | MIT License | howlerjs.com */
+		!function(){"use strict";var e=function(){this.init()};e.prototype={init:function(){var e=this||n;return e._counter=1e3,e._html5AudioPool=[],e.html5PoolSize=10,e._codecs={},e._howls=[],e._muted=!1,e._volume=1,e._canPlayEvent="canplaythrough",e._navigator="undefined"!=typeof window&&window.navigator?window.navigator:null,e.masterGain=null,e.noAudio=!1,e.usingWebAudio=!0,e.autoSuspend=!0,e.ctx=null,e.autoUnlock=!0,e._setup(),e},volume:function(e){var o=this||n;if(e=parseFloat(e),o.ctx||_(),void 0!==e&&e>=0&&e<=1){if(o._volume=e,o._muted)return o;o.usingWebAudio&&o.masterGain.gain.setValueAtTime(e,n.ctx.currentTime);for(var t=0;t<o._howls.length;t++)if(!o._howls[t]._webAudio)for(var r=o._howls[t]._getSoundIds(),a=0;a<r.length;a++){var u=o._howls[t]._soundById(r[a]);u&&u._node&&(u._node.volume=u._volume*e)}return o}return o._volume},mute:function(e){var o=this||n;o.ctx||_(),o._muted=e,o.usingWebAudio&&o.masterGain.gain.setValueAtTime(e?0:o._volume,n.ctx.currentTime);for(var t=0;t<o._howls.length;t++)if(!o._howls[t]._webAudio)for(var r=o._howls[t]._getSoundIds(),a=0;a<r.length;a++){var u=o._howls[t]._soundById(r[a]);u&&u._node&&(u._node.muted=!!e||u._muted)}return o},stop:function(){for(var e=this||n,o=0;o<e._howls.length;o++)e._howls[o].stop();return e},unload:function(){for(var e=this||n,o=e._howls.length-1;o>=0;o--)e._howls[o].unload();return e.usingWebAudio&&e.ctx&&void 0!==e.ctx.close&&(e.ctx.close(),e.ctx=null,_()),e},codecs:function(e){return(this||n)._codecs[e.replace(/^x-/,"")]},_setup:function(){var e=this||n;if(e.state=e.ctx?e.ctx.state||"suspended":"suspended",e._autoSuspend(),!e.usingWebAudio)if("undefined"!=typeof Audio)try{var o=new Audio;void 0===o.oncanplaythrough&&(e._canPlayEvent="canplay")}catch(n){e.noAudio=!0}else e.noAudio=!0;try{var o=new Audio;o.muted&&(e.noAudio=!0)}catch(e){}return e.noAudio||e._setupCodecs(),e},_setupCodecs:function(){var e=this||n,o=null;try{o="undefined"!=typeof Audio?new Audio:null}catch(n){return e}if(!o||"function"!=typeof o.canPlayType)return e;var t=o.canPlayType("audio/mpeg;").replace(/^no$/,""),r=e._navigator?e._navigator.userAgent:"",a=r.match(/OPR\/(\d+)/g),u=a&&parseInt(a[0].split("/")[1],10)<33,d=-1!==r.indexOf("Safari")&&-1===r.indexOf("Chrome"),i=r.match(/Version\/(.*?) /),_=d&&i&&parseInt(i[1],10)<15;return e._codecs={mp3:!(u||!t&&!o.canPlayType("audio/mp3;").replace(/^no$/,"")),mpeg:!!t,opus:!!o.canPlayType('audio/ogg; codecs="opus"').replace(/^no$/,""),ogg:!!o.canPlayType('audio/ogg; codecs="vorbis"').replace(/^no$/,""),oga:!!o.canPlayType('audio/ogg; codecs="vorbis"').replace(/^no$/,""),wav:!!(o.canPlayType('audio/wav; codecs="1"')||o.canPlayType("audio/wav")).replace(/^no$/,""),aac:!!o.canPlayType("audio/aac;").replace(/^no$/,""),caf:!!o.canPlayType("audio/x-caf;").replace(/^no$/,""),m4a:!!(o.canPlayType("audio/x-m4a;")||o.canPlayType("audio/m4a;")||o.canPlayType("audio/aac;")).replace(/^no$/,""),m4b:!!(o.canPlayType("audio/x-m4b;")||o.canPlayType("audio/m4b;")||o.canPlayType("audio/aac;")).replace(/^no$/,""),mp4:!!(o.canPlayType("audio/x-mp4;")||o.canPlayType("audio/mp4;")||o.canPlayType("audio/aac;")).replace(/^no$/,""),weba:!(_||!o.canPlayType('audio/webm; codecs="vorbis"').replace(/^no$/,"")),webm:!(_||!o.canPlayType('audio/webm; codecs="vorbis"').replace(/^no$/,"")),dolby:!!o.canPlayType('audio/mp4; codecs="ec-3"').replace(/^no$/,""),flac:!!(o.canPlayType("audio/x-flac;")||o.canPlayType("audio/flac;")).replace(/^no$/,"")},e},_unlockAudio:function(){var e=this||n;if(!e._audioUnlocked&&e.ctx){e._audioUnlocked=!1,e.autoUnlock=!1,e._mobileUnloaded||44100===e.ctx.sampleRate||(e._mobileUnloaded=!0,e.unload()),e._scratchBuffer=e.ctx.createBuffer(1,1,22050);var o=function(n){for(;e._html5AudioPool.length<e.html5PoolSize;)try{var t=new Audio;t._unlocked=!0,e._releaseHtml5Audio(t)}catch(n){e.noAudio=!0;break}for(var r=0;r<e._howls.length;r++)if(!e._howls[r]._webAudio)for(var a=e._howls[r]._getSoundIds(),u=0;u<a.length;u++){var d=e._howls[r]._soundById(a[u]);d&&d._node&&!d._node._unlocked&&(d._node._unlocked=!0,d._node.load())}e._autoResume();var i=e.ctx.createBufferSource();i.buffer=e._scratchBuffer,i.connect(e.ctx.destination),void 0===i.start?i.noteOn(0):i.start(0),"function"==typeof e.ctx.resume&&e.ctx.resume(),i.onended=function(){i.disconnect(0),e._audioUnlocked=!0,document.removeEventListener("touchstart",o,!0),document.removeEventListener("touchend",o,!0),document.removeEventListener("click",o,!0),document.removeEventListener("keydown",o,!0);for(var n=0;n<e._howls.length;n++)e._howls[n]._emit("unlock")}};return document.addEventListener("touchstart",o,!0),document.addEventListener("touchend",o,!0),document.addEventListener("click",o,!0),document.addEventListener("keydown",o,!0),e}},_obtainHtml5Audio:function(){var e=this||n;if(e._html5AudioPool.length)return e._html5AudioPool.pop();var o=(new Audio).play();return o&&"undefined"!=typeof Promise&&(o instanceof Promise||"function"==typeof o.then)&&o.catch(function(){console.warn("HTML5 Audio pool exhausted, returning potentially locked audio object.")}),new Audio},_releaseHtml5Audio:function(e){var o=this||n;return e._unlocked&&o._html5AudioPool.push(e),o},_autoSuspend:function(){var e=this;if(e.autoSuspend&&e.ctx&&void 0!==e.ctx.suspend&&n.usingWebAudio){for(var o=0;o<e._howls.length;o++)if(e._howls[o]._webAudio)for(var t=0;t<e._howls[o]._sounds.length;t++)if(!e._howls[o]._sounds[t]._paused)return e;return e._suspendTimer&&clearTimeout(e._suspendTimer),e._suspendTimer=setTimeout(function(){if(e.autoSuspend){e._suspendTimer=null,e.state="suspending";var n=function(){e.state="suspended",e._resumeAfterSuspend&&(delete e._resumeAfterSuspend,e._autoResume())};e.ctx.suspend().then(n,n)}},3e4),e}},_autoResume:function(){var e=this;if(e.ctx&&void 0!==e.ctx.resume&&n.usingWebAudio)return"running"===e.state&&"interrupted"!==e.ctx.state&&e._suspendTimer?(clearTimeout(e._suspendTimer),e._suspendTimer=null):"suspended"===e.state||"running"===e.state&&"interrupted"===e.ctx.state?(e.ctx.resume().then(function(){e.state="running";for(var n=0;n<e._howls.length;n++)e._howls[n]._emit("resume")}),e._suspendTimer&&(clearTimeout(e._suspendTimer),e._suspendTimer=null)):"suspending"===e.state&&(e._resumeAfterSuspend=!0),e}};var n=new e,o=function(e){var n=this;if(!e.src||0===e.src.length)return void console.error("An array of source files must be passed with any new Howl.");n.init(e)};o.prototype={init:function(e){var o=this;return n.ctx||_(),o._autoplay=e.autoplay||!1,o._format="string"!=typeof e.format?e.format:[e.format],o._html5=e.html5||!1,o._muted=e.mute||!1,o._loop=e.loop||!1,o._pool=e.pool||5,o._preload="boolean"!=typeof e.preload&&"metadata"!==e.preload||e.preload,o._rate=e.rate||1,o._sprite=e.sprite||{},o._src="string"!=typeof e.src?e.src:[e.src],o._volume=void 0!==e.volume?e.volume:1,o._xhr={method:e.xhr&&e.xhr.method?e.xhr.method:"GET",headers:e.xhr&&e.xhr.headers?e.xhr.headers:null,withCredentials:!(!e.xhr||!e.xhr.withCredentials)&&e.xhr.withCredentials},o._duration=0,o._state="unloaded",o._sounds=[],o._endTimers={},o._queue=[],o._playLock=!1,o._onend=e.onend?[{fn:e.onend}]:[],o._onfade=e.onfade?[{fn:e.onfade}]:[],o._onload=e.onload?[{fn:e.onload}]:[],o._onloaderror=e.onloaderror?[{fn:e.onloaderror}]:[],o._onplayerror=e.onplayerror?[{fn:e.onplayerror}]:[],o._onpause=e.onpause?[{fn:e.onpause}]:[],o._onplay=e.onplay?[{fn:e.onplay}]:[],o._onstop=e.onstop?[{fn:e.onstop}]:[],o._onmute=e.onmute?[{fn:e.onmute}]:[],o._onvolume=e.onvolume?[{fn:e.onvolume}]:[],o._onrate=e.onrate?[{fn:e.onrate}]:[],o._onseek=e.onseek?[{fn:e.onseek}]:[],o._onunlock=e.onunlock?[{fn:e.onunlock}]:[],o._onresume=[],o._webAudio=n.usingWebAudio&&!o._html5,void 0!==n.ctx&&n.ctx&&n.autoUnlock&&n._unlockAudio(),n._howls.push(o),o._autoplay&&o._queue.push({event:"play",action:function(){o.play()}}),o._preload&&"none"!==o._preload&&o.load(),o},load:function(){var e=this,o=null;if(n.noAudio)return void e._emit("loaderror",null,"No audio support.");"string"==typeof e._src&&(e._src=[e._src]);for(var r=0;r<e._src.length;r++){var u,d;if(e._format&&e._format[r])u=e._format[r];else{if("string"!=typeof(d=e._src[r])){e._emit("loaderror",null,"Non-string found in selected audio sources - ignoring.");continue}u=/^data:audio\/([^;,]+);/i.exec(d),u||(u=/\.([^.]+)$/.exec(d.split("?",1)[0])),u&&(u=u[1].toLowerCase())}if(u||console.warn('No file extension was found. Consider using the "format" property or specify an extension.'),u&&n.codecs(u)){o=e._src[r];break}}return o?(e._src=o,e._state="loading","https:"===window.location.protocol&&"http:"===o.slice(0,5)&&(e._html5=!0,e._webAudio=!1),new t(e),e._webAudio&&a(e),e):void e._emit("loaderror",null,"No codec support for selected audio sources.")},play:function(e,o){var t=this,r=null;if("number"==typeof e)r=e,e=null;else{if("string"==typeof e&&"loaded"===t._state&&!t._sprite[e])return null;if(void 0===e&&(e="__default",!t._playLock)){for(var a=0,u=0;u<t._sounds.length;u++)t._sounds[u]._paused&&!t._sounds[u]._ended&&(a++,r=t._sounds[u]._id);1===a?e=null:r=null}}var d=r?t._soundById(r):t._inactiveSound();if(!d)return null;if(r&&!e&&(e=d._sprite||"__default"),"loaded"!==t._state){d._sprite=e,d._ended=!1;var i=d._id;return t._queue.push({event:"play",action:function(){t.play(i)}}),i}if(r&&!d._paused)return o||t._loadQueue("play"),d._id;t._webAudio&&n._autoResume();var _=Math.max(0,d._seek>0?d._seek:t._sprite[e][0]/1e3),s=Math.max(0,(t._sprite[e][0]+t._sprite[e][1])/1e3-_),l=1e3*s/Math.abs(d._rate),c=t._sprite[e][0]/1e3,f=(t._sprite[e][0]+t._sprite[e][1])/1e3;d._sprite=e,d._ended=!1;var p=function(){d._paused=!1,d._seek=_,d._start=c,d._stop=f,d._loop=!(!d._loop&&!t._sprite[e][2])};if(_>=f)return void t._ended(d);var m=d._node;if(t._webAudio){var v=function(){t._playLock=!1,p(),t._refreshBuffer(d);var e=d._muted||t._muted?0:d._volume;m.gain.setValueAtTime(e,n.ctx.currentTime),d._playStart=n.ctx.currentTime,void 0===m.bufferSource.start?d._loop?m.bufferSource.noteGrainOn(0,_,86400):m.bufferSource.noteGrainOn(0,_,s):d._loop?m.bufferSource.start(0,_,86400):m.bufferSource.start(0,_,s),l!==1/0&&(t._endTimers[d._id]=setTimeout(t._ended.bind(t,d),l)),o||setTimeout(function(){t._emit("play",d._id),t._loadQueue()},0)};"running"===n.state&&"interrupted"!==n.ctx.state?v():(t._playLock=!0,t.once("resume",v),t._clearTimer(d._id))}else{var h=function(){m.currentTime=_,m.muted=d._muted||t._muted||n._muted||m.muted,m.volume=d._volume*n.volume(),m.playbackRate=d._rate;try{var r=m.play();if(r&&"undefined"!=typeof Promise&&(r instanceof Promise||"function"==typeof r.then)?(t._playLock=!0,p(),r.then(function(){t._playLock=!1,m._unlocked=!0,o?t._loadQueue():t._emit("play",d._id)}).catch(function(){t._playLock=!1,t._emit("playerror",d._id,"Playback was unable to start. This is most commonly an issue on mobile devices and Chrome where playback was not within a user interaction."),d._ended=!0,d._paused=!0})):o||(t._playLock=!1,p(),t._emit("play",d._id)),m.playbackRate=d._rate,m.paused)return void t._emit("playerror",d._id,"Playback was unable to start. This is most commonly an issue on mobile devices and Chrome where playback was not within a user interaction.");"__default"!==e||d._loop?t._endTimers[d._id]=setTimeout(t._ended.bind(t,d),l):(t._endTimers[d._id]=function(){t._ended(d),m.removeEventListener("ended",t._endTimers[d._id],!1)},m.addEventListener("ended",t._endTimers[d._id],!1))}catch(e){t._emit("playerror",d._id,e)}};"data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"===m.src&&(m.src=t._src,m.load());var y=window&&window.ejecta||!m.readyState&&n._navigator.isCocoonJS;if(m.readyState>=3||y)h();else{t._playLock=!0,t._state="loading";var g=function(){t._state="loaded",h(),m.removeEventListener(n._canPlayEvent,g,!1)};m.addEventListener(n._canPlayEvent,g,!1),t._clearTimer(d._id)}}return d._id},pause:function(e){var n=this;if("loaded"!==n._state||n._playLock)return n._queue.push({event:"pause",action:function(){n.pause(e)}}),n;for(var o=n._getSoundIds(e),t=0;t<o.length;t++){n._clearTimer(o[t]);var r=n._soundById(o[t]);if(r&&!r._paused&&(r._seek=n.seek(o[t]),r._rateSeek=0,r._paused=!0,n._stopFade(o[t]),r._node))if(n._webAudio){if(!r._node.bufferSource)continue;void 0===r._node.bufferSource.stop?r._node.bufferSource.noteOff(0):r._node.bufferSource.stop(0),n._cleanBuffer(r._node)}else isNaN(r._node.duration)&&r._node.duration!==1/0||r._node.pause();arguments[1]||n._emit("pause",r?r._id:null)}return n},stop:function(e,n){var o=this;if("loaded"!==o._state||o._playLock)return o._queue.push({event:"stop",action:function(){o.stop(e)}}),o;for(var t=o._getSoundIds(e),r=0;r<t.length;r++){o._clearTimer(t[r]);var a=o._soundById(t[r]);a&&(a._seek=a._start||0,a._rateSeek=0,a._paused=!0,a._ended=!0,o._stopFade(t[r]),a._node&&(o._webAudio?a._node.bufferSource&&(void 0===a._node.bufferSource.stop?a._node.bufferSource.noteOff(0):a._node.bufferSource.stop(0),o._cleanBuffer(a._node)):isNaN(a._node.duration)&&a._node.duration!==1/0||(a._node.currentTime=a._start||0,a._node.pause(),a._node.duration===1/0&&o._clearSound(a._node))),n||o._emit("stop",a._id))}return o},mute:function(e,o){var t=this;if("loaded"!==t._state||t._playLock)return t._queue.push({event:"mute",action:function(){t.mute(e,o)}}),t;if(void 0===o){if("boolean"!=typeof e)return t._muted;t._muted=e}for(var r=t._getSoundIds(o),a=0;a<r.length;a++){var u=t._soundById(r[a]);u&&(u._muted=e,u._interval&&t._stopFade(u._id),t._webAudio&&u._node?u._node.gain.setValueAtTime(e?0:u._volume,n.ctx.currentTime):u._node&&(u._node.muted=!!n._muted||e),t._emit("mute",u._id))}return t},volume:function(){var e,o,t=this,r=arguments;if(0===r.length)return t._volume;if(1===r.length||2===r.length&&void 0===r[1]){t._getSoundIds().indexOf(r[0])>=0?o=parseInt(r[0],10):e=parseFloat(r[0])}else r.length>=2&&(e=parseFloat(r[0]),o=parseInt(r[1],10));var a;if(!(void 0!==e&&e>=0&&e<=1))return a=o?t._soundById(o):t._sounds[0],a?a._volume:0;if("loaded"!==t._state||t._playLock)return t._queue.push({event:"volume",action:function(){t.volume.apply(t,r)}}),t;void 0===o&&(t._volume=e),o=t._getSoundIds(o);for(var u=0;u<o.length;u++)(a=t._soundById(o[u]))&&(a._volume=e,r[2]||t._stopFade(o[u]),t._webAudio&&a._node&&!a._muted?a._node.gain.setValueAtTime(e,n.ctx.currentTime):a._node&&!a._muted&&(a._node.volume=e*n.volume()),t._emit("volume",a._id));return t},fade:function(e,o,t,r){var a=this;if("loaded"!==a._state||a._playLock)return a._queue.push({event:"fade",action:function(){a.fade(e,o,t,r)}}),a;e=Math.min(Math.max(0,parseFloat(e)),1),o=Math.min(Math.max(0,parseFloat(o)),1),t=parseFloat(t),a.volume(e,r);for(var u=a._getSoundIds(r),d=0;d<u.length;d++){var i=a._soundById(u[d]);if(i){if(r||a._stopFade(u[d]),a._webAudio&&!i._muted){var _=n.ctx.currentTime,s=_+t/1e3;i._volume=e,i._node.gain.setValueAtTime(e,_),i._node.gain.linearRampToValueAtTime(o,s)}a._startFadeInterval(i,e,o,t,u[d],void 0===r)}}return a},_startFadeInterval:function(e,n,o,t,r,a){var u=this,d=n,i=o-n,_=Math.abs(i/.01),s=Math.max(4,_>0?t/_:t),l=Date.now();e._fadeTo=o,e._interval=setInterval(function(){var r=(Date.now()-l)/t;l=Date.now(),d+=i*r,d=Math.round(100*d)/100,d=i<0?Math.max(o,d):Math.min(o,d),u._webAudio?e._volume=d:u.volume(d,e._id,!0),a&&(u._volume=d),(o<n&&d<=o||o>n&&d>=o)&&(clearInterval(e._interval),e._interval=null,e._fadeTo=null,u.volume(o,e._id),u._emit("fade",e._id))},s)},_stopFade:function(e){var o=this,t=o._soundById(e);return t&&t._interval&&(o._webAudio&&t._node.gain.cancelScheduledValues(n.ctx.currentTime),clearInterval(t._interval),t._interval=null,o.volume(t._fadeTo,e),t._fadeTo=null,o._emit("fade",e)),o},loop:function(){var e,n,o,t=this,r=arguments;if(0===r.length)return t._loop;if(1===r.length){if("boolean"!=typeof r[0])return!!(o=t._soundById(parseInt(r[0],10)))&&o._loop;e=r[0],t._loop=e}else 2===r.length&&(e=r[0],n=parseInt(r[1],10));for(var a=t._getSoundIds(n),u=0;u<a.length;u++)(o=t._soundById(a[u]))&&(o._loop=e,t._webAudio&&o._node&&o._node.bufferSource&&(o._node.bufferSource.loop=e,e&&(o._node.bufferSource.loopStart=o._start||0,o._node.bufferSource.loopEnd=o._stop,t.playing(a[u])&&(t.pause(a[u],!0),t.play(a[u],!0)))));return t},rate:function(){var e,o,t=this,r=arguments;if(0===r.length)o=t._sounds[0]._id;else if(1===r.length){var a=t._getSoundIds(),u=a.indexOf(r[0]);u>=0?o=parseInt(r[0],10):e=parseFloat(r[0])}else 2===r.length&&(e=parseFloat(r[0]),o=parseInt(r[1],10));var d;if("number"!=typeof e)return d=t._soundById(o),d?d._rate:t._rate;if("loaded"!==t._state||t._playLock)return t._queue.push({event:"rate",action:function(){t.rate.apply(t,r)}}),t;void 0===o&&(t._rate=e),o=t._getSoundIds(o);for(var i=0;i<o.length;i++)if(d=t._soundById(o[i])){t.playing(o[i])&&(d._rateSeek=t.seek(o[i]),d._playStart=t._webAudio?n.ctx.currentTime:d._playStart),d._rate=e,t._webAudio&&d._node&&d._node.bufferSource?d._node.bufferSource.playbackRate.setValueAtTime(e,n.ctx.currentTime):d._node&&(d._node.playbackRate=e);var _=t.seek(o[i]),s=(t._sprite[d._sprite][0]+t._sprite[d._sprite][1])/1e3-_,l=1e3*s/Math.abs(d._rate);!t._endTimers[o[i]]&&d._paused||(t._clearTimer(o[i]),t._endTimers[o[i]]=setTimeout(t._ended.bind(t,d),l)),t._emit("rate",d._id)}return t},seek:function(){var e,o,t=this,r=arguments;if(0===r.length)t._sounds.length&&(o=t._sounds[0]._id);else if(1===r.length){var a=t._getSoundIds(),u=a.indexOf(r[0]);u>=0?o=parseInt(r[0],10):t._sounds.length&&(o=t._sounds[0]._id,e=parseFloat(r[0]))}else 2===r.length&&(e=parseFloat(r[0]),o=parseInt(r[1],10));if(void 0===o)return 0;if("number"==typeof e&&("loaded"!==t._state||t._playLock))return t._queue.push({event:"seek",action:function(){t.seek.apply(t,r)}}),t;var d=t._soundById(o);if(d){if(!("number"==typeof e&&e>=0)){if(t._webAudio){var i=t.playing(o)?n.ctx.currentTime-d._playStart:0,_=d._rateSeek?d._rateSeek-d._seek:0;return d._seek+(_+i*Math.abs(d._rate))}return d._node.currentTime}var s=t.playing(o);s&&t.pause(o,!0),d._seek=e,d._ended=!1,t._clearTimer(o),t._webAudio||!d._node||isNaN(d._node.duration)||(d._node.currentTime=e);var l=function(){s&&t.play(o,!0),t._emit("seek",o)};if(s&&!t._webAudio){var c=function(){t._playLock?setTimeout(c,0):l()};setTimeout(c,0)}else l()}return t},playing:function(e){var n=this;if("number"==typeof e){var o=n._soundById(e);return!!o&&!o._paused}for(var t=0;t<n._sounds.length;t++)if(!n._sounds[t]._paused)return!0;return!1},duration:function(e){var n=this,o=n._duration,t=n._soundById(e);return t&&(o=n._sprite[t._sprite][1]/1e3),o},state:function(){return this._state},unload:function(){for(var e=this,o=e._sounds,t=0;t<o.length;t++)o[t]._paused||e.stop(o[t]._id),e._webAudio||(e._clearSound(o[t]._node),o[t]._node.removeEventListener("error",o[t]._errorFn,!1),o[t]._node.removeEventListener(n._canPlayEvent,o[t]._loadFn,!1),o[t]._node.removeEventListener("ended",o[t]._endFn,!1),n._releaseHtml5Audio(o[t]._node)),delete o[t]._node,e._clearTimer(o[t]._id);var a=n._howls.indexOf(e);a>=0&&n._howls.splice(a,1);var u=!0;for(t=0;t<n._howls.length;t++)if(n._howls[t]._src===e._src||e._src.indexOf(n._howls[t]._src)>=0){u=!1;break}return r&&u&&delete r[e._src],n.noAudio=!1,e._state="unloaded",e._sounds=[],e=null,null},on:function(e,n,o,t){var r=this,a=r["_on"+e];return"function"==typeof n&&a.push(t?{id:o,fn:n,once:t}:{id:o,fn:n}),r},off:function(e,n,o){var t=this,r=t["_on"+e],a=0;if("number"==typeof n&&(o=n,n=null),n||o)for(a=0;a<r.length;a++){var u=o===r[a].id;if(n===r[a].fn&&u||!n&&u){r.splice(a,1);break}}else if(e)t["_on"+e]=[];else{var d=Object.keys(t);for(a=0;a<d.length;a++)0===d[a].indexOf("_on")&&Array.isArray(t[d[a]])&&(t[d[a]]=[])}return t},once:function(e,n,o){var t=this;return t.on(e,n,o,1),t},_emit:function(e,n,o){for(var t=this,r=t["_on"+e],a=r.length-1;a>=0;a--)r[a].id&&r[a].id!==n&&"load"!==e||(setTimeout(function(e){e.call(this,n,o)}.bind(t,r[a].fn),0),r[a].once&&t.off(e,r[a].fn,r[a].id));return t._loadQueue(e),t},_loadQueue:function(e){var n=this;if(n._queue.length>0){var o=n._queue[0];o.event===e&&(n._queue.shift(),n._loadQueue()),e||o.action()}return n},_ended:function(e){var o=this,t=e._sprite;if(!o._webAudio&&e._node&&!e._node.paused&&!e._node.ended&&e._node.currentTime<e._stop)return setTimeout(o._ended.bind(o,e),100),o;var r=!(!e._loop&&!o._sprite[t][2]);if(o._emit("end",e._id),!o._webAudio&&r&&o.stop(e._id,!0).play(e._id),o._webAudio&&r){o._emit("play",e._id),e._seek=e._start||0,e._rateSeek=0,e._playStart=n.ctx.currentTime;var a=1e3*(e._stop-e._start)/Math.abs(e._rate);o._endTimers[e._id]=setTimeout(o._ended.bind(o,e),a)}return o._webAudio&&!r&&(e._paused=!0,e._ended=!0,e._seek=e._start||0,e._rateSeek=0,o._clearTimer(e._id),o._cleanBuffer(e._node),n._autoSuspend()),o._webAudio||r||o.stop(e._id,!0),o},_clearTimer:function(e){var n=this;if(n._endTimers[e]){if("function"!=typeof n._endTimers[e])clearTimeout(n._endTimers[e]);else{var o=n._soundById(e);o&&o._node&&o._node.removeEventListener("ended",n._endTimers[e],!1)}delete n._endTimers[e]}return n},_soundById:function(e){for(var n=this,o=0;o<n._sounds.length;o++)if(e===n._sounds[o]._id)return n._sounds[o];return null},_inactiveSound:function(){var e=this;e._drain();for(var n=0;n<e._sounds.length;n++)if(e._sounds[n]._ended)return e._sounds[n].reset();return new t(e)},_drain:function(){var e=this,n=e._pool,o=0,t=0;if(!(e._sounds.length<n)){for(t=0;t<e._sounds.length;t++)e._sounds[t]._ended&&o++;for(t=e._sounds.length-1;t>=0;t--){if(o<=n)return;e._sounds[t]._ended&&(e._webAudio&&e._sounds[t]._node&&e._sounds[t]._node.disconnect(0),e._sounds.splice(t,1),o--)}}},_getSoundIds:function(e){var n=this;if(void 0===e){for(var o=[],t=0;t<n._sounds.length;t++)o.push(n._sounds[t]._id);return o}return[e]},_refreshBuffer:function(e){var o=this;return e._node.bufferSource=n.ctx.createBufferSource(),e._node.bufferSource.buffer=r[o._src],e._panner?e._node.bufferSource.connect(e._panner):e._node.bufferSource.connect(e._node),e._node.bufferSource.loop=e._loop,e._loop&&(e._node.bufferSource.loopStart=e._start||0,e._node.bufferSource.loopEnd=e._stop||0),e._node.bufferSource.playbackRate.setValueAtTime(e._rate,n.ctx.currentTime),o},_cleanBuffer:function(e){var o=this,t=n._navigator&&n._navigator.vendor.indexOf("Apple")>=0;if(!e.bufferSource)return o;if(n._scratchBuffer&&e.bufferSource&&(e.bufferSource.onended=null,e.bufferSource.disconnect(0),t))try{e.bufferSource.buffer=n._scratchBuffer}catch(e){}return e.bufferSource=null,o},_clearSound:function(e){/MSIE |Trident\//.test(n._navigator&&n._navigator.userAgent)||(e.src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA")}};var t=function(e){this._parent=e,this.init()};t.prototype={init:function(){var e=this,o=e._parent;return e._muted=o._muted,e._loop=o._loop,e._volume=o._volume,e._rate=o._rate,e._seek=0,e._paused=!0,e._ended=!0,e._sprite="__default",e._id=++n._counter,o._sounds.push(e),e.create(),e},create:function(){var e=this,o=e._parent,t=n._muted||e._muted||e._parent._muted?0:e._volume;return o._webAudio?(e._node=void 0===n.ctx.createGain?n.ctx.createGainNode():n.ctx.createGain(),e._node.gain.setValueAtTime(t,n.ctx.currentTime),e._node.paused=!0,e._node.connect(n.masterGain)):n.noAudio||(e._node=n._obtainHtml5Audio(),e._errorFn=e._errorListener.bind(e),e._node.addEventListener("error",e._errorFn,!1),e._loadFn=e._loadListener.bind(e),e._node.addEventListener(n._canPlayEvent,e._loadFn,!1),e._endFn=e._endListener.bind(e),e._node.addEventListener("ended",e._endFn,!1),e._node.src=o._src,e._node.preload=!0===o._preload?"auto":o._preload,e._node.volume=t*n.volume(),e._node.load()),e},reset:function(){var e=this,o=e._parent;return e._muted=o._muted,e._loop=o._loop,e._volume=o._volume,e._rate=o._rate,e._seek=0,e._rateSeek=0,e._paused=!0,e._ended=!0,e._sprite="__default",e._id=++n._counter,e},_errorListener:function(){var e=this;e._parent._emit("loaderror",e._id,e._node.error?e._node.error.code:0),e._node.removeEventListener("error",e._errorFn,!1)},_loadListener:function(){var e=this,o=e._parent;o._duration=Math.ceil(10*e._node.duration)/10,0===Object.keys(o._sprite).length&&(o._sprite={__default:[0,1e3*o._duration]}),"loaded"!==o._state&&(o._state="loaded",o._emit("load"),o._loadQueue()),e._node.removeEventListener(n._canPlayEvent,e._loadFn,!1)},_endListener:function(){var e=this,n=e._parent;n._duration===1/0&&(n._duration=Math.ceil(10*e._node.duration)/10,n._sprite.__default[1]===1/0&&(n._sprite.__default[1]=1e3*n._duration),n._ended(e)),e._node.removeEventListener("ended",e._endFn,!1)}};var r={},a=function(e){var n=e._src;if(r[n])return e._duration=r[n].duration,void i(e);if(/^data:[^;]+;base64,/.test(n)){for(var o=atob(n.split(",")[1]),t=new Uint8Array(o.length),a=0;a<o.length;++a)t[a]=o.charCodeAt(a);d(t.buffer,e)}else{var _=new XMLHttpRequest;_.open(e._xhr.method,n,!0),_.withCredentials=e._xhr.withCredentials,_.responseType="arraybuffer",e._xhr.headers&&Object.keys(e._xhr.headers).forEach(function(n){_.setRequestHeader(n,e._xhr.headers[n])}),_.onload=function(){var n=(_.status+"")[0];if("0"!==n&&"2"!==n&&"3"!==n)return void e._emit("loaderror",null,"Failed loading audio file with status: "+_.status+".");d(_.response,e)},_.onerror=function(){e._webAudio&&(e._html5=!0,e._webAudio=!1,e._sounds=[],delete r[n],e.load())},u(_)}},u=function(e){try{e.send()}catch(n){e.onerror()}},d=function(e,o){var t=function(){o._emit("loaderror",null,"Decoding audio data failed.")},a=function(e){e&&o._sounds.length>0?(r[o._src]=e,i(o,e)):t()};"undefined"!=typeof Promise&&1===n.ctx.decodeAudioData.length?n.ctx.decodeAudioData(e).then(a).catch(t):n.ctx.decodeAudioData(e,a,t)},i=function(e,n){n&&!e._duration&&(e._duration=n.duration),0===Object.keys(e._sprite).length&&(e._sprite={__default:[0,1e3*e._duration]}),"loaded"!==e._state&&(e._state="loaded",e._emit("load"),e._loadQueue())},_=function(){if(n.usingWebAudio){try{"undefined"!=typeof AudioContext?n.ctx=new AudioContext:"undefined"!=typeof webkitAudioContext?n.ctx=new webkitAudioContext:n.usingWebAudio=!1}catch(e){n.usingWebAudio=!1}n.ctx||(n.usingWebAudio=!1);var e=/iP(hone|od|ad)/.test(n._navigator&&n._navigator.platform),o=n._navigator&&n._navigator.appVersion.match(/OS (\d+)_(\d+)_?(\d+)?/),t=o?parseInt(o[1],10):null;if(e&&t&&t<9){var r=/safari/.test(n._navigator&&n._navigator.userAgent.toLowerCase());n._navigator&&!r&&(n.usingWebAudio=!1)}n.usingWebAudio&&(n.masterGain=void 0===n.ctx.createGain?n.ctx.createGainNode():n.ctx.createGain(),n.masterGain.gain.setValueAtTime(n._muted?0:n._volume,n.ctx.currentTime),n.masterGain.connect(n.ctx.destination)),n._setup()}};"function"==typeof define&&define.amd&&define([],function(){return{Howler:n,Howl:o}}),"undefined"!=typeof exports&&(exports.Howler=n,exports.Howl=o),"undefined"!=typeof global?(global.HowlerGlobal=e,global.Howler=n,global.Howl=o,global.Sound=t):"undefined"!=typeof window&&(window.HowlerGlobal=e,window.Howler=n,window.Howl=o,window.Sound=t)}();
+		/*! Spatial Plugin */
+		!function(){"use strict";HowlerGlobal.prototype._pos=[0,0,0],HowlerGlobal.prototype._orientation=[0,0,-1,0,1,0],HowlerGlobal.prototype.stereo=function(e){var n=this;if(!n.ctx||!n.ctx.listener)return n;for(var t=n._howls.length-1;t>=0;t--)n._howls[t].stereo(e);return n},HowlerGlobal.prototype.pos=function(e,n,t){var r=this;return r.ctx&&r.ctx.listener?(n="number"!=typeof n?r._pos[1]:n,t="number"!=typeof t?r._pos[2]:t,"number"!=typeof e?r._pos:(r._pos=[e,n,t],void 0!==r.ctx.listener.positionX?(r.ctx.listener.positionX.setTargetAtTime(r._pos[0],Howler.ctx.currentTime,.1),r.ctx.listener.positionY.setTargetAtTime(r._pos[1],Howler.ctx.currentTime,.1),r.ctx.listener.positionZ.setTargetAtTime(r._pos[2],Howler.ctx.currentTime,.1)):r.ctx.listener.setPosition(r._pos[0],r._pos[1],r._pos[2]),r)):r},HowlerGlobal.prototype.orientation=function(e,n,t,r,o,i){var a=this;if(!a.ctx||!a.ctx.listener)return a;var p=a._orientation;return n="number"!=typeof n?p[1]:n,t="number"!=typeof t?p[2]:t,r="number"!=typeof r?p[3]:r,o="number"!=typeof o?p[4]:o,i="number"!=typeof i?p[5]:i,"number"!=typeof e?p:(a._orientation=[e,n,t,r,o,i],void 0!==a.ctx.listener.forwardX?(a.ctx.listener.forwardX.setTargetAtTime(e,Howler.ctx.currentTime,.1),a.ctx.listener.forwardY.setTargetAtTime(n,Howler.ctx.currentTime,.1),a.ctx.listener.forwardZ.setTargetAtTime(t,Howler.ctx.currentTime,.1),a.ctx.listener.upX.setTargetAtTime(r,Howler.ctx.currentTime,.1),a.ctx.listener.upY.setTargetAtTime(o,Howler.ctx.currentTime,.1),a.ctx.listener.upZ.setTargetAtTime(i,Howler.ctx.currentTime,.1)):a.ctx.listener.setOrientation(e,n,t,r,o,i),a)},Howl.prototype.init=function(e){return function(n){var t=this;return t._orientation=n.orientation||[1,0,0],t._stereo=n.stereo||null,t._pos=n.pos||null,t._pannerAttr={coneInnerAngle:void 0!==n.coneInnerAngle?n.coneInnerAngle:360,coneOuterAngle:void 0!==n.coneOuterAngle?n.coneOuterAngle:360,coneOuterGain:void 0!==n.coneOuterGain?n.coneOuterGain:0,distanceModel:void 0!==n.distanceModel?n.distanceModel:"inverse",maxDistance:void 0!==n.maxDistance?n.maxDistance:1e4,panningModel:void 0!==n.panningModel?n.panningModel:"HRTF",refDistance:void 0!==n.refDistance?n.refDistance:1,rolloffFactor:void 0!==n.rolloffFactor?n.rolloffFactor:1},t._onstereo=n.onstereo?[{fn:n.onstereo}]:[],t._onpos=n.onpos?[{fn:n.onpos}]:[],t._onorientation=n.onorientation?[{fn:n.onorientation}]:[],e.call(this,n)}}(Howl.prototype.init),Howl.prototype.stereo=function(n,t){var r=this;if(!r._webAudio)return r;if("loaded"!==r._state)return r._queue.push({event:"stereo",action:function(){r.stereo(n,t)}}),r;var o=void 0===Howler.ctx.createStereoPanner?"spatial":"stereo";if(void 0===t){if("number"!=typeof n)return r._stereo;r._stereo=n,r._pos=[n,0,0]}for(var i=r._getSoundIds(t),a=0;a<i.length;a++){var p=r._soundById(i[a]);if(p){if("number"!=typeof n)return p._stereo;p._stereo=n,p._pos=[n,0,0],p._node&&(p._pannerAttr.panningModel="equalpower",p._panner&&p._panner.pan||e(p,o),"spatial"===o?void 0!==p._panner.positionX?(p._panner.positionX.setValueAtTime(n,Howler.ctx.currentTime),p._panner.positionY.setValueAtTime(0,Howler.ctx.currentTime),p._panner.positionZ.setValueAtTime(0,Howler.ctx.currentTime)):p._panner.setPosition(n,0,0):p._panner.pan.setValueAtTime(n,Howler.ctx.currentTime)),r._emit("stereo",p._id)}}return r},Howl.prototype.pos=function(n,t,r,o){var i=this;if(!i._webAudio)return i;if("loaded"!==i._state)return i._queue.push({event:"pos",action:function(){i.pos(n,t,r,o)}}),i;if(t="number"!=typeof t?0:t,r="number"!=typeof r?-.5:r,void 0===o){if("number"!=typeof n)return i._pos;i._pos=[n,t,r]}for(var a=i._getSoundIds(o),p=0;p<a.length;p++){var s=i._soundById(a[p]);if(s){if("number"!=typeof n)return s._pos;s._pos=[n,t,r],s._node&&(s._panner&&!s._panner.pan||e(s,"spatial"),void 0!==s._panner.positionX?(s._panner.positionX.setValueAtTime(n,Howler.ctx.currentTime),s._panner.positionY.setValueAtTime(t,Howler.ctx.currentTime),s._panner.positionZ.setValueAtTime(r,Howler.ctx.currentTime)):s._panner.setPosition(n,t,r)),i._emit("pos",s._id)}}return i},Howl.prototype.orientation=function(n,t,r,o){var i=this;if(!i._webAudio)return i;if("loaded"!==i._state)return i._queue.push({event:"orientation",action:function(){i.orientation(n,t,r,o)}}),i;if(t="number"!=typeof t?i._orientation[1]:t,r="number"!=typeof r?i._orientation[2]:r,void 0===o){if("number"!=typeof n)return i._orientation;i._orientation=[n,t,r]}for(var a=i._getSoundIds(o),p=0;p<a.length;p++){var s=i._soundById(a[p]);if(s){if("number"!=typeof n)return s._orientation;s._orientation=[n,t,r],s._node&&(s._panner||(s._pos||(s._pos=i._pos||[0,0,-.5]),e(s,"spatial")),void 0!==s._panner.orientationX?(s._panner.orientationX.setValueAtTime(n,Howler.ctx.currentTime),s._panner.orientationY.setValueAtTime(t,Howler.ctx.currentTime),s._panner.orientationZ.setValueAtTime(r,Howler.ctx.currentTime)):s._panner.setOrientation(n,t,r)),i._emit("orientation",s._id)}}return i},Howl.prototype.pannerAttr=function(){var n,t,r,o=this,i=arguments;if(!o._webAudio)return o;if(0===i.length)return o._pannerAttr;if(1===i.length){if("object"!=typeof i[0])return r=o._soundById(parseInt(i[0],10)),r?r._pannerAttr:o._pannerAttr;n=i[0],void 0===t&&(n.pannerAttr||(n.pannerAttr={coneInnerAngle:n.coneInnerAngle,coneOuterAngle:n.coneOuterAngle,coneOuterGain:n.coneOuterGain,distanceModel:n.distanceModel,maxDistance:n.maxDistance,refDistance:n.refDistance,rolloffFactor:n.rolloffFactor,panningModel:n.panningModel}),o._pannerAttr={coneInnerAngle:void 0!==n.pannerAttr.coneInnerAngle?n.pannerAttr.coneInnerAngle:o._coneInnerAngle,coneOuterAngle:void 0!==n.pannerAttr.coneOuterAngle?n.pannerAttr.coneOuterAngle:o._coneOuterAngle,coneOuterGain:void 0!==n.pannerAttr.coneOuterGain?n.pannerAttr.coneOuterGain:o._coneOuterGain,distanceModel:void 0!==n.pannerAttr.distanceModel?n.pannerAttr.distanceModel:o._distanceModel,maxDistance:void 0!==n.pannerAttr.maxDistance?n.pannerAttr.maxDistance:o._maxDistance,refDistance:void 0!==n.pannerAttr.refDistance?n.pannerAttr.refDistance:o._refDistance,rolloffFactor:void 0!==n.pannerAttr.rolloffFactor?n.pannerAttr.rolloffFactor:o._rolloffFactor,panningModel:void 0!==n.pannerAttr.panningModel?n.pannerAttr.panningModel:o._panningModel})}else 2===i.length&&(n=i[0],t=parseInt(i[1],10));for(var a=o._getSoundIds(t),p=0;p<a.length;p++)if(r=o._soundById(a[p])){var s=r._pannerAttr;s={coneInnerAngle:void 0!==n.coneInnerAngle?n.coneInnerAngle:s.coneInnerAngle,coneOuterAngle:void 0!==n.coneOuterAngle?n.coneOuterAngle:s.coneOuterAngle,coneOuterGain:void 0!==n.coneOuterGain?n.coneOuterGain:s.coneOuterGain,distanceModel:void 0!==n.distanceModel?n.distanceModel:s.distanceModel,maxDistance:void 0!==n.maxDistance?n.maxDistance:s.maxDistance,refDistance:void 0!==n.refDistance?n.refDistance:s.refDistance,rolloffFactor:void 0!==n.rolloffFactor?n.rolloffFactor:s.rolloffFactor,panningModel:void 0!==n.panningModel?n.panningModel:s.panningModel};var c=r._panner;c||(r._pos||(r._pos=o._pos||[0,0,-.5]),e(r,"spatial"),c=r._panner),c.coneInnerAngle=s.coneInnerAngle,c.coneOuterAngle=s.coneOuterAngle,c.coneOuterGain=s.coneOuterGain,c.distanceModel=s.distanceModel,c.maxDistance=s.maxDistance,c.refDistance=s.refDistance,c.rolloffFactor=s.rolloffFactor,c.panningModel=s.panningModel}return o},Sound.prototype.init=function(e){return function(){var n=this,t=n._parent;n._orientation=t._orientation,n._stereo=t._stereo,n._pos=t._pos,n._pannerAttr=t._pannerAttr,e.call(this),n._stereo?t.stereo(n._stereo):n._pos&&t.pos(n._pos[0],n._pos[1],n._pos[2],n._id)}}(Sound.prototype.init),Sound.prototype.reset=function(e){return function(){var n=this,t=n._parent;return n._orientation=t._orientation,n._stereo=t._stereo,n._pos=t._pos,n._pannerAttr=t._pannerAttr,n._stereo?t.stereo(n._stereo):n._pos?t.pos(n._pos[0],n._pos[1],n._pos[2],n._id):n._panner&&(n._panner.disconnect(0),n._panner=void 0,t._refreshBuffer(n)),e.call(this)}}(Sound.prototype.reset);var e=function(e,n){n=n||"spatial","spatial"===n?(e._panner=Howler.ctx.createPanner(),e._panner.coneInnerAngle=e._pannerAttr.coneInnerAngle,e._panner.coneOuterAngle=e._pannerAttr.coneOuterAngle,e._panner.coneOuterGain=e._pannerAttr.coneOuterGain,e._panner.distanceModel=e._pannerAttr.distanceModel,e._panner.maxDistance=e._pannerAttr.maxDistance,e._panner.refDistance=e._pannerAttr.refDistance,e._panner.rolloffFactor=e._pannerAttr.rolloffFactor,e._panner.panningModel=e._pannerAttr.panningModel,void 0!==e._panner.positionX?(e._panner.positionX.setValueAtTime(e._pos[0],Howler.ctx.currentTime),e._panner.positionY.setValueAtTime(e._pos[1],Howler.ctx.currentTime),e._panner.positionZ.setValueAtTime(e._pos[2],Howler.ctx.currentTime)):e._panner.setPosition(e._pos[0],e._pos[1],e._pos[2]),void 0!==e._panner.orientationX?(e._panner.orientationX.setValueAtTime(e._orientation[0],Howler.ctx.currentTime),e._panner.orientationY.setValueAtTime(e._orientation[1],Howler.ctx.currentTime),e._panner.orientationZ.setValueAtTime(e._orientation[2],Howler.ctx.currentTime)):e._panner.setOrientation(e._orientation[0],e._orientation[1],e._orientation[2])):(e._panner=Howler.ctx.createStereoPanner(),e._panner.pan.setValueAtTime(e._stereo,Howler.ctx.currentTime)),e._panner.connect(e._node),e._paused||e._parent.pause(e._id,!0).play(e._id,!0)}}();
+	</script>
+	<script type="inline-module">
+		import { CVariables, CInventory, COwnable, CCountable, CStats, Stat, CInteractable, GameEvent, CDescriptors, CStrings }
+			from "#raspg"
+		import { GGame, Interaction, CompositeObject }
+			from "#raspg"
+		import { Steptext }
+			from "#steptext"
+
+		//# Fishing stuff
+		class Fish extends CompositeObject {
+			static all = []
+			depth
+			isFish = true
+
+			constructor(article, name, plural, minDepth, description) {
+				super({identifier: name.replace(/\s/g, ''), components: [COwnable, CCountable, CDescriptors]})
+				this.depth = minDepth
+				this.setDescriptors(article, name, description, {plural: plural})
+				this.registerPlaceholder('name', (object) => {
+					return `${object.isNew? '<span class="invert">NEW</span> ' : ''}${object.$name}`
+				})
+				Fish.all.push(this)
+			}
+
+			static getRandom(depth=1) {
+				if (depth === 0)
+					depth = 1
+				const chances = []
+				const candidates = []
+				const pickArray = [chances, candidates]
+				for (const fish of this.all) {
+					const distance = Math.abs(depth - fish.depth) || 1
+					chances.push(Math.max(0, -(1/(200 + depth*1.5)) * Math.pow(distance, 1.5) + 10))
+					candidates.push(fish)
+				}
+				// const chanceTotal = chances.reduce((prv, cur) => prv + cur, 0)
+				// for (const i in chances)
+				// 	chances[i] /= chanceTotal
+				return PickOne(pickArray)
+			}
+		}
+		class Discovery extends CompositeObject {
+			static all = []
+			static globalChanceMultiplier = 2
+			depth
+			fn
+			maxTimes = 1
+			timesFound = 0
+			addToInventory
+			chance
+			needs
+
+			/**
+			* @param {number} depth
+			* @param {(this: Discovery) => void} fn
+			* @param {{variance: number, maxTimes: boolean, addToInventory: boolean, chance: number, needs: (this: Discovery) => boolean}} props
+			*/
+			constructor(name, description, depth, fn, props={variance: 20, maxTimes: 1, addToInventory: true, chance: 1, needs: undefined}) {
+				super({components: [CStrings, CDescriptors, COwnable], identifier: name})
+				this.setDescriptors('', name, description)
+				this.depth = depth + Math.round(Math.random() * (props.variance?? 50) - (props.variance?? 50)/2)
+				this.fn = fn
+				if (props.maxTimes)
+					this.maxTimes = props.maxTimes
+				if (props.addToInventory?? true)
+					this.addToInventory = props.addToInventory?? true
+				if (props.chance)
+					this.chance = props.chance
+				Discovery.all.push(this)
+			}
+
+			/** @type {Array<Discovery>} */
+			static get eligible() {
+				const eligible = this.all.filter(d =>
+					(d.maxTimes > d.timesFound)
+					&& (player.getVar('depth') >= d.depth)
+					&& (d.needs? d.needs() : true)
+					&& (d.chance? ((1-d.chance*this.globalChanceMultiplier) < Math.random()) : true)
+				)
+				shuffleArray(eligible)
+				return eligible
+			}
+
+			find() {
+				this.fn.apply(this)
+				this.timesFound++
+				if (this.addToInventory)
+					player.giveItem(this)
+			}
+		}
+
+		//# Access variables
+		const main = document.querySelector('main')
+		const title = document.getElementById('title')
+		const messages = document.getElementById('messages')
+		const logs = document.getElementById('logs')
+		const input = document.getElementById('input')
+		const player = new CompositeObject({identifier: 'player', components: [CVariables, CInventory, CStats, CInteractable]})
+		const caught = document.getElementById('caught')
+		const depth = document.getElementById('depth')
+		const follower = document.getElementById('follower')
+
+		//# Export variables to window context
+		window.player = player
+		window.Interaction = Interaction
+		window.Fish = Fish
+		window.Discovery = Discovery
+		window.Steptext = Steptext
+		window.GameEvent = GameEvent
+		window.CreateVisual = CreateVisual
+		window.SpawnShapes = SpawnShapes
+		window.PickOne = PickOne
+
+		//# Sounds
+		const ambientCutoffs = [40, 150, 400]
+		const ambientMaxVols = [.5,  .1,  .5]
+		const soundsAmbient = [
+			new Howl({ src: './assets/ambiance_surface.mp3',
+				html5: true, loop: true, autoplay: true, volume: ambientMaxVols[0], onunlock: function() { this.play() } }),
+			new Howl({ src: './assets/ambiance_shallow.mp3',
+				html5: true, loop: true, autoplay: true, volume: 0, onunlock: function() { this.play() } }),
+			new Howl({ src: './assets/ambiance_deep.mp3',
+				html5: true, loop: true, autoplay: true, volume: 0, onunlock: function() { this.play() } }),
+		]
+		const soundsCreak = [
+			new Howl({ src: './assets/creak1.mp3',
+				html5: true, volume: .5 }),
+			new Howl({ src: './assets/creak2.mp3',
+				html5: true, volume: .5 }),
+			new Howl({ src: './assets/creak3.mp3',
+				html5: true, volume: .5 }),
+			new Howl({ src: './assets/creak4.mp3',
+				html5: true, volume: .5 }),
+			new Howl({ src: './assets/creak5.mp3',
+				html5: true, volume: .5 }),
+		]
+		const soundsLamp = {
+			on: new Howl({ src: './assets/lamp_on.mp3',
+				html5: true, volume: .5 }),
+			off: new Howl({ src: './assets/lamp_off.mp3',
+				html5: true, volume: .5 }),
+			hum: new Howl({ src: './assets/lamp_hum.mp3',
+				html5: true, volume: .3, loop: true, autoplay: true, volume: 0, onunlock: function() { this.play() } }),
+		}
+		const soundsBump = [
+			new Howl({ src: './assets/bump1.mp3',
+				html5: true, volume: .7 }),
+			new Howl({ src: './assets/bump2.mp3',
+				html5: true, volume: .7 }),
+		]
+
+		//# Object instances
+		new Stat('power', {value: 1})
+		//? Fishes
+		new Fish('a', 'sunlight zone fish', 'sunlight zone fishes', 0, 'A fish found in the sunlight zone.')
+		new Fish('a', 'twilight zone fish', 'twilight zone fishes', 150, 'A fish found in the twilight zone.')
+		new Fish('a', 'midnight zone fish', 'midnight zone fishes', 400, 'A fish found in the midnight zone.')
+		new Fish('an', 'abyss zone fish', 'abyss zone fishes', 600, 'A fish found in the abyss zone.')
+		new Fish('an', 'eldritch fish', 'eldritch fishes', 1200, 'A fish found at incredible depths.')
+		// new Fish('a', 'striped bass', 0, 50, 'A powerful predator with distinctive black stripes, known for its aggressive feeding habits.')
+		// new Fish('a', 'tuna', 20, 50, 'Large, powerful fish with a streamlined body, often sought after for its meat.')
+		//? Discoveries
+		//* - Story items and singular treasures
+		new Discovery('sample container', `A reinforced metal container fitted with buoyancy devices.`, 10, function() {
+			const containerInteraction = new Interaction('container', 'Investigate the metal container.', 'container', (self) => {
+				const quantity = 16 + Math.round(Math.random() * 8 - 4)
+				self.alterVar('caught', (val) => val += quantity)
+				GameEvent.trigger('CAUGHT')
+				GGame.out(`You check the container you found. After prying it open, you find it contains an assortment of fishes. You note that each is tagged with a plastic tag containing its species, size and weight measurements, and what must be codes.\n\nThe discovery makes you shiver.`)
+				player.removeInteraction(Interaction.get('container'))
+			}, {register: false})
+			Interaction.register(containerInteraction)
+			player.addInteraction(containerInteraction)
+
+			GGame.out(`You find a sturdy, heavily reinforced **container** near the surface, slowly floating upwards.\n\nThe container seems to be fitted with buoyancy devices...\nPresumably for recovery in case of the loss of a vessel.\n\nYou note the discovery into your **journal**.`)
+			player.addInteraction(Interaction.get('journal'))
+		}, { variance: 5 })
+		new Discovery('submarine lights', 'Lights salvaged from a submarine wreck.', 50, function() {
+			GGame.out(`Your sensors detect a metallic echo. Investigating, you find what looks to be a chunk of a wrecked submarine. It seems quite badly damaged, but you manage to salvage its <b>lights</b>.\n\nThe discovery makes you shiver.`)
+			player.addInteraction('lights')
+		})
+		new Discovery('powerup', '', 100, function() {
+			player.stats.get('power').add += 1
+			this.depth += 100
+		})
+		//* - Oddities and easter eggs
+		new Discovery('"living water" sensor data', 'Sensor readings of some odd, invisible entity.', 500, function() {
+			GGame.out(`You feel something bump against your hull. When you turn to look, you see nothing there, but your sensors report something.\n\nYou can't shake the feeling that you're staring right at it, and it is staring back.\n\nThe sensation makes you shiver.`)
+			PickOne(soundsBump).play()
+		}, { addToInventory: true, variance: 200, maxTimes: Infinity, chance: 0.1 })
+		new Discovery('water pressure anomaly', 'Sensor readings of a region of abnormally high water pressure.', 200, function() {
+			GGame.out(`You hear the creaking and moaning of your hull, as it flexes and readjusts under the mounting **pressure** of the water above.\n\nThe sounds make you shiver.`)
+			player.addInteraction('pressure')
+			player.setVar('pressure', 'Readings are elevated, and fluctuating slightly.')
+			player.setVar('turnsToResetPressure', 4 + Math.round(Math.random() * 3))
+			const handler = () => {
+				if (player.alterVar('turnsToResetPressure', val => val-1) === 0)
+					ResetPressure()
+			}
+			GameEvent.get('TURN').listen(handler)
+
+			this.depth = 200 + Math.round(this.depth/200) * 200 + Math.round(Math.random()*98 - 49)
+			const firstCreak = PickOne(soundsCreak)
+			let secondCreak = PickOne(soundsCreak)
+			while (secondCreak === firstCreak)
+				secondCreak = PickOne(soundsCreak)
+			firstCreak.volume(.1).play()
+			setTimeout(() => secondCreak.volume(.3).play(), 3000)
+			function ResetPressure() {
+				player.resetVar('pressure')
+				player.setVar('turnsToResetPressure', 0)
+				GGame.out(`Your hull stops creaking and moaning, having adjusted to the **pressure**.`)
+				GameEvent.get('TURN').listeners.delete(handler)
+				PickOne(soundsCreak).volume(.1).play()
+			}
+		}, { addToInventory: true, variance: 0, maxTimes: Infinity, chance: 0.2, needs: () => player.getVar('turnsToResetPressure') === 0 })
+		new Discovery('distant echoes', 'Recordings of distant, whimper-like echoes.', 600, function() {
+			GGame.out(`You hear something that sounds like a distant whimper echoing out of the depths, out of sensor range.\n\nThe sound makes you shiver.`)
+			this.depth += 100 + Math.round(Math.random()*100 - 50)
+		}, { addToInventory: true, variance: 0, chance: 0.2, maxTimes: Infinity })
+		new Discovery('stars', '', 1000, async function() {
+			Steptext.lock = true
+			Steptext.interval = 100
+			const textInterval = 2000
+			GGame.out(`As your hull creaks crisply, your sensors start reporting odd readings.`)
+			await WaitForSteptext()
+			await new Promise(r => setTimeout(r, textInterval))
+			GGame.out(`You look out, seeing tiny dots of light start to appear in your peripheral vision, disappearing as you turn to look.`)
+			await WaitForSteptext()
+			await new Promise(r => setTimeout(r, textInterval))
+			GGame.out(`Your core starts aching, your mind churning uncomfortably, as if the pressure pressing over your hull is now getting through.`)
+			await WaitForSteptext()
+			await new Promise(r => setTimeout(r, textInterval))
+			GGame.out(`You watch as more and more appear, now visible in the center of your vision: shimmering points of light, lining the dark abyss surrounding you.`)
+			await WaitForSteptext()
+			await new Promise(r => setTimeout(r, textInterval))
+			GGame.out(`Your core races and hums, all systems bracing; sensors keenly focused, but readings still nonsensical.`)
+			Steptext.lock = false
+			async function WaitForSteptext() {
+				while (Steptext.queue.length)
+					await new Promise(r => setTimeout(r, 50))
+				return
+			}
+		}, { addToInventory: false, variance: 0, maxTimes: Infinity })
+		new Discovery('timestutter', 'How can... time..', 600, async function() {
+			Steptext.lock = true
+			const hallucinations = [
+				`<error>a</error>You caught: 999999...`,
+				`<error>a</error>You caught: nothing...`,
+				`<error>a</error>You caught: the head of a...`,
+				`<error>a</error>You hear the creaking and...`,
+				`<error>a</error>You hear something in the dee...`,
+				`<error>a</error>You feel something bump...`,
+				`<error>a</error>You feel as though you're being...`,
+				`<error>a</error>You feel it seeping into your...`,
+				`<error>a</error>You cannot shake the feeling...`,
+				`<error>a</error>You cannot help but panic...`,
+				`<error>a</error>You know it's waiting for you...`,
+				`<error>a</error>It looms, neverending...`,
+			]
+			for (let i=0; i < 3; i++) {
+				const hallucination = PickOne(hallucinations)
+				if (i === 0)
+					GGame.out(hallucination)
+				else
+					Steptext.queue = Steptext.queue.replace(/^(.*?)(<\/div>)/, `${hallucination}$2`)
+				await new Promise(r => setTimeout(r, (hallucination.length-16) * Steptext.interval))
+				Steptext.element.lastElementChild.innerHTML = Steptext.element.lastElementChild.innerHTML.replace(/(<\/span>)(.*)/, `$1`)
+			}
+			Steptext.queue = Steptext.queue.replace(/^(.*?)(<\/div>)/, '$2')
+			this.chance = player.getVar('depth')/10000 * 2
+			Steptext.lock = false
+		}, { addToInventory: false, variance: 0, maxTimes: Infinity, chance: 0.1 })
+		new Discovery('hot water anomaly', 'Sensor readings of a region of abnormally hot water.', 200, function() {
+			GGame.out(`You hear the hull creak intermittently as it heats up, the **temperature** gauge increasing fast. Sensor reports odd readings all around.\n\nThe heat makes you sweat.`)
+			player.addInteraction('temperature')
+			player.setVar('temperature', 'It reads abnormally high.')
+			player.setVar('turnsToResetTemperature', 5 + Math.round(Math.random() * 4 - 2))
+			const handler = () => {
+				if (player.alterVar('turnsToResetTemperature', val => val-1) <= 0)
+					ResetTemperature()
+			}
+			document.body.parentElement.classList.add('hotwater')
+			GameEvent.get('TURN').listen(handler)
+			function ResetTemperature() {
+				document.body.parentElement.classList.remove('hotwater')
+				player.resetVar('temperature')
+				player.setVar('turnsToResetTemperature', 0)
+				GGame.out(`You hear the hull creak a few more times, as the **temperature** gauge returns to frigid temperatures.`)
+				GameEvent.get('TURN').unlisten(handler)
+			}
+		}, { addToInventory: true, variance: 0, chance: 0.1, maxTimes: Infinity, needs: () => player.getVar('turnsToResetTemperature') === 0 })
+		new Discovery('lights out', '', 450, function() {
+			setTimeout(() => document.body.classList.remove('lights'), (65+10)*Steptext.interval)
+			player.setVar('lightsWork', false)
+			if (player.getVar('lights')) {
+				soundsLamp.off.play()
+				soundsLamp.hum.fade(.5, 0, 100)
+			}
+			player.setVar('lights', false)
+			player.setVar('turnsToResetLights', Math.round(Math.random() * 10 + 10))
+			GGame.out(`You hear the humming of the lights sharply increase, and then a _"thunk"_. Your **lights** have malfunctioned.${this.timesFound == 0? '\n\nIn a panicked search, you manage to find an emergency **flashlight** module.' : ''}`)
+			player.addInteraction('flashlight')
+			const handler = () => {
+				if (player.alterVar('turnsToResetLights', val => val-1) === 0)
+					ResetLights()
+			}
+			GameEvent.get('TURN').listen(handler)
+			function ResetLights() {
+				player.resetVar('lightsWork')
+				player.setVar('flashlight', false)
+				setTimeout(() => document.body.classList.remove('flashlight'), 2000)
+				GGame.out(`You have managed to repair your lights. They are now operable.`)
+				GameEvent.get('TURN').unlisten(handler)
+			}
+		}, { addToInventory: false, variance: 0, chance: 0.1, maxTimes: Infinity, needs: () => player.getVar('turnsToResetLights') === 0 })
+		new Discovery('1238', '', 250, function() {
+			GGame.out(`Your sensors report readings indicating an approximately ${(Math.random()*500 + 1000).toFixed(0)}-meter tunnel opening in the seabed nearby. You feel it might be worth it to **investigate**.`)
+			const investigate = new Interaction('investigate', 'Investigate the large tunnel.', 'investigate', function(self) {
+				if (this.getVar('fishScared') && this.getVar('wallsSeen'))
+					GGame.out(`You find nothing else of note, and feel you should move on.`)
+				else if (self.getVar('lights'))
+					if (!this.getVar('fishScared')) {
+						if (self.interactions.investigateCount === 0) {
+							GGame.out(`You approach the massive opening. Inside, you can only catch glimpses of them, as they quickly swim away from your **lights**, but there seem to be hundreds, perhaps thousands, of fish inside, each almost the size of a human.\n\nTheir movements make you shiver.`)
+						} else {
+							GGame.out(`Your lights reveal hundreds, perhaps thousands of fish inside. As you look at them, a good portion turn to face you. Each looks to be approximately 3.2 meters long.\n\nThe sight makes you shiver.`)
+							this.setVar('fishScared', true)
+						}
+					} else {
+						GGame.out(`You investigate further. The entire wall of the tunnel looks as though the rock has been chiped and chewed off.\n\nThe discovery makes you shiver.`)
+						this.setVar('wallsSeen', true)
+					}
+				else {
+					if (self.interactions.investigateCount === 0)
+						GGame.out(`You approach the massive opening. You can barely see with your **lights** off, but you do spot a great number of what look like eye reflections, and a myriad more of soft dots of light, presumably reflecting off of scales.`)
+					else if (!this.getVar('fishScared'))
+						GGame.out(`You strain your eyes continuing to observe the mesmerizing display. More pairs of eyes seem to be looking your way each time you look.`)
+					else
+						GGame.out(`You see nothing in the dark. The fish have fled further into the tunnel.`)
+				}
+				GameEvent.trigger('TURN')
+			}, {components: [CVariables]})
+			investigate.registerVariable('fishScared', false)
+			investigate.registerVariable('wallsSeen', false)
+			player.addInteraction(investigate)
+			const handler = () => {
+				player.removeInteraction(investigate)
+				GameEvent.get('CAUGHT').unlisten(handler)
+			}
+			GameEvent.get('CAUGHT').listen(handler)
+		}, { addToInventory: false, variance: 100 })
+		new Discovery('shadow', '', 400, function() {
+			GGame.out(`Your sensors report an unidentified organic mass some distance away${player.getVar('lights')? `, just out of range of your lights` : ''}. Readings indicate it is massive in size.\n\nThe thought makes you shiver.`)
+			setTimeout(() => CreateVisual('shadow', 0, 1, 1000, 1, 5), Math.random() * 300 + 1000)
+		}, { addToInventory: 0, variance: 0, maxTimes: 5, chance: 0.1 })
+		new Discovery('deadzone', '', 800, function() {
+			GGame.out(`Your sensors go silent.\nYour gauges fall limp and motionless.\nYour lights fail and plunge you into darkness.\nYou are left blind and deaf.`)
+			setTimeout(() => document.body.classList.remove('lights'), 10*Steptext.interval)
+			player.setVar('lightsWork', false)
+			const lightsPreviousState = player.getVar('lights')
+			player.setVar('lights', false)
+			player.setVar('deadzone', true)
+			player.setVar('deadzoneTurns', 5 + Math.round(Math.random() * 4 - 2))
+			player.setVar('temperature', 'It sits at its lowest position, unmoving.')
+			player.setVar('pressure', 'It sits at its lowest position, unmoving.')
+			const handler = () => {
+				if (player.alterVar('deadzoneTurns', val => val-1) === 0)
+					deadzoneEnd()
+			}
+			GameEvent.get('TURN').listen(handler)
+			function deadzoneEnd() {
+				player.resetVar('lightsWork')
+				player.setVar('lights', lightsPreviousState)
+				player.setVar('deadzone', 0)
+				GGame.out(`Your sensors and gauges start reporting readings again, normalizing after some time.`)
+				GameEvent.get('TURN').unlisten(handler)
+			}
+		})
+		//? Events
+		new GameEvent('TURN')
+		new GameEvent('CAUGHT', () => {
+			caught.textContent = ''+player.getVar('caught')
+			GameEvent.trigger('DEPTH')
+		})
+		new GameEvent('DEPTH', () => {
+			let now = Date.now()
+			const start = player.getVar('depth')
+			const end = player.alterVar('depth', (val) => val += player.getVar('caught')/5)
+			const interval = setInterval(() => {
+				depth.textContent = '' + easeInOutSine(Date.now() - now, start, end-start, 1000).toFixed(1)
+				document.body.style.setProperty('--depth', easeInOutSine(Date.now() - now, start, end-start, 1000).toFixed(1))
+			}, 32)
+			setTimeout(() => clearInterval(interval), 1000)
+			const discovery = PickOne(Discovery.eligible)
+			if (discovery)
+				discovery.find()
+		})
+		//? Interactions
+		new Interaction('fish', 'Try to catch fish.', 'fish', function(self) {
+			if (player.getVar('deadzone')) {
+				GGame.out(`You fail to find fish in the surrounding area.`)
+				GameEvent.trigger('TURN')
+				return
+			}
+			//* Calculate fish quantity
+			const quantity = player.getVar('canCatch')? Math.round(
+				5
+				//* Fishing power
+				+ self.calculateStat('power')
+				//* Random variation. -3...3, -2...4, -1...5, etc.
+				+ (Math.random() * (6 + self.calculateStat('power')) - 5)
+			) : 0
+			console.log(`Caught ${quantity} fish.`)
+
+			//* Give fish quantity
+			self.alterVar('caught', (val) => val + quantity)
+
+			//* Pull random fish
+			const fishes = new CompositeObject({register: false, components: [CStrings, CInventory]})
+			for(let i=0; i<quantity; i++)
+				fishes.giveItem(Fish.getRandom(player.getVar('depth')).clone(), 1)
+
+			//* Mark new
+			for (const fish of fishes.inventory)
+				if (!player.findByID(fish.id))
+					fish.isNew = true
+				else
+					fish.isNew = false
+
+			//* Output and event trigger
+			GameEvent.trigger('CAUGHT', self, quantity)
+			if (quantity == 0)
+				GGame.out(`You caught:\n${fishes.inventory.map(f => ` - ${f.parseString('$name')}`).join('\n')}.`)
+			else
+				GGame.out(`You caught:\n${fishes.inventory.map(f => ` - ${f.parseString('$name')}`).join('\n')}.`)
+
+			//* Push random fish to player inventory
+			for (const fish of fishes.inventory.slice()) {
+				player.giveItem(fishes.removeItem(fish), fish.count)
+			}
+
+			//* Unmark new
+			for (const fish of player.inventory) {
+				fish.isNew = false
+			}
+			GameEvent.trigger('TURN')
+		})
+		new Interaction('wait', 'Wait adrift.', 'wait', function(self) {
+			GGame.out(`You wait a while, adrift in the currents.`)
+			GameEvent.trigger('TURN')
+		})
+		new Interaction('lights', 'Turn the lights on.', /(?:toggle\s*)?lights?/i, function(self) {
+			if (player.getVar('lightsWork')) {
+				const lampState = self.alterVar('lights', (val) => !val)
+				setTimeout(() => lampState?
+					document.body.classList.add('lights')
+					: document.body.classList.remove('lights')
+				, 20)
+				GGame.out(`You turn the lights ${lampState? 'on' : 'off'}.`)
+				if (lampState) {
+					soundsLamp.on.play()
+					setTimeout(() => soundsLamp.hum.fade(0, .5, 600), 300)
+				}
+				else {
+					soundsLamp.off.play()
+					soundsLamp.hum.fade(.5, 0, 100)
+				}
+				if (player.interactions.investigateCount > 0)
+					player.findInteraction('investigate')
+			} else
+				GGame.out(`Your lights are currently inoperable.`)
+		})
+		new Interaction('journal', 'Check the current haul.', /inventory|catch(?:es)?\s*log|collection|journal|logbook|fishdex|report/i, function(self) {
+			GGame.out(self.parseString('$inventory'))
+		})
+		new Interaction('pressure', 'Check the pressure gauge.', /(?:check\s*)?pressure(?:\s*gauge)?|gauge/i, function(self) {
+			GGame.out(`You check your pressure gauge. ${self.getVar('pressure')}`)
+		})
+		new Interaction('temperature', 'Check the water temperature gauge.', /(?:check\s*)?temp(?:erature)?(?:\s*gauge)?|gauge/i, function(self) {
+			GGame.out(`You check your temperature gauge. ${self.getVar('temperature')}`)
+		})
+		new Interaction('flashlight', 'Turn on the emergency flashlight.', /emergency\s*(?:flash)?lights?|flashlights?/i, function(self) {
+			if (player.getVar('lightsWork'))
+				GGame.out(`You have no need for your flashlight currently.`)
+			else {
+				setTimeout(() => document.body.classList.toggle('flashlight'), 20)
+				GGame.out(`You turn your flashlight ${self.alterVar('flashlight', (val) => !val)? 'on' : 'off'}.`)
+			}
+		})
+		new Interaction('help', 'See a list of available commands.', /help|commands?/i, function(self) {
+			GGame.out(`You assess your current situation.`)
+			CreateLog('help', Array.from(player.interactions).map(i => `<b>${i.name}</b> - ${i.description}`).join('<br>'))
+			document.body.classList.add('log')
+		})
+
+		//# Player setup
+		player.registerPlaceholder('fishes', (self) => {
+			if (self.inventory.filter(i => i.isFish).length === 0)
+				return 'So far, you have caught nothing.'
+			return 'So far, you have caught:\n'+self.inventory.
+				filter(i => i.isFish)
+				.map(f => `- ${f.parseString('$Name')} - ${f.$description}`)
+				.join('\n')
+		})
+		player.registerPlaceholder('discoveries', (self) => {
+			if (self.inventory.filter(d => d.maxTimes).length === 0)
+				return ''
+			return '\n\nYou have also found:\n'+self.inventory.
+				filter(d => d.maxTimes)
+				.map(d => `- ${d.parseString('$Singular')} - ${d.$description}`)
+				.join('\n')
+		})
+		player.addInteraction('help')
+		player.addInteraction('wait')
+		player.addInteraction('fish')
+		player.setInventoryStrings('$fishes $discoveries')
+		player.registerStat(new Stat('power'))
+		player.registerVariable('canCatch', true)
+		player.registerVariable('caught', 0)
+		player.registerVariable('depth', 0)
+		player.registerVariable('lightsWork', true)
+		player.registerVariable('turnsToResetLights', 0)
+		player.registerVariable('lights', false)
+		player.registerVariable('flashlight', false)
+		player.registerVariable('pressure', 'It reads nominal.')
+		player.registerVariable('turnsToResetPressure', 0)
+		player.registerVariable('temperature', 'It reads nominal.')
+		player.registerVariable('turnsToResetTemperature', 0)
+		player.registerVariable('deadzone', false)
+		player.registerVariable('deadzoneTurns', 5)
+
+		//# Framework setup
+		Steptext.interval = 32
+		Steptext.element = messages
+		Steptext.step()
+		GGame.setPlayer(player)
+		GGame.setParsingFunction((inp) => {
+			player.matchInteraction(inp)
+			GGame.currentInput = ''
+		})
+		GGame.setOutputFunction((string) => {
+			//* Fade all but the latest 3 messages
+			main.querySelectorAll('.msg').forEach((e, i, p) => {
+				if (i > p.length - 3)
+					return
+				e.classList.add('fade')
+			})
+			// const span = document.createElement('span')
+			// span.className = 'msg in'
+			// setTimeout(() => span.classList.remove('in'), 300)
+			// console.log(string)
+			// span.innerHTML = string.replace(/\n/g, '<br>')
+			// console.log(span.innerHTML)
+			// input.before(span)
+			let inputText = ''
+			if (GGame.currentInput)
+				inputText = `<span class="input">${GGame.currentInput}</span>`
+			GGame.currentInput = undefined
+			Steptext.queue += `<div class="msg in">${inputText}${string}</div>`
+			setTimeout(() => messages.lastElementChild.classList.remove('in'), 300)
+		})
+
+		//# Debugging
+		// Discovery.all.forEach(d => [
+		// 	'sample container',
+		// 	'submarine lights'
+		// ].includes(d.identifier)? d.find() : null)
+		// for (let i=0; i<3; i++)
+		// 	player.findInteraction('fish')
+		// Steptext.skip()
+		// GameEvent.trigger('DEPTH')
+		// player.findInteraction('lights')
+
+		//# Input registering and other setup
+		input.addEventListener('keypress', function(e) {
+			if (e.key === 'Enter') {
+				if (!Steptext.lock)
+					Steptext.skip()
+				GGame.parse(input.value.trim().toLowerCase())
+				input.value = ''
+				input.setAttribute('disabled', '')
+				InputWait()
+				ScrollToBottom()
+				function InputWait() {
+					if (Steptext.queue.length || Steptext.lock)
+						return requestAnimationFrame(InputWait)
+					input.removeAttribute('disabled')
+					input.focus()
+				}
+			}
+		})
+		//? Observer for new elements for sound effects?
+		new MutationObserver((mutationsList) => {
+			const notify = ['ERROR']
+			for (const m of mutationsList) {
+				const notifications = Array.from(m.addedNodes).filter(e => notify.includes(e.tagName))
+				if (notifications.length)
+					console.log('MutationObserver notification: ', notifications)
+			}
+		}).observe(messages, { childList: true, subtree: true })
+		//? Follower
+		main.addEventListener('mousemove', throttle((event) => {
+			follower.style.setProperty('--x', `${event.pageX}px`)
+			follower.style.setProperty('--y', `${event.pageY}px`)
+		}, 16))
+		document.addEventListener('mouseleave', () => follower.style.setProperty('--on', 0))
+		document.addEventListener('mouseenter', () => follower.style.setProperty('--on', 1))
+		ScrollToBottom()
+		ModulateBeam()
+		//? Scroll top
+		const ch = document.createElement('div')
+		ch.style.cssText = 'width:1ch'
+		main.append(ch)
+		main.addEventListener('scroll', () => {
+			const scrollCH = main.scrollTop / ch.clientWidth
+			main.style.setProperty('--scroll', main.scrollTop)
+			main.style.setProperty('--scroll-ch', main.scrollTop / ch.clientWidth)
+			title.style.opacity = Math.min(1, 1 - (main.scrollTop/100-1)/2)
+			document.querySelectorAll('.particles').forEach(p => p.style.setProperty('--o', Math.min(1, (main.scrollTop / 100 - 5) / 50)))
+
+			soundsAmbient.forEach((audio, i) => {
+				audio.volume(Math.max(0, Math.min(ambientMaxVols[i], ambientMaxVols[i] * (
+					scrollCH <= ambientCutoffs.at(i)?
+						(scrollCH - (ambientCutoffs.at(i-1)?? 0)) * 1 / (ambientCutoffs.at(i) - (ambientCutoffs.at(i-1)?? 0))
+						: 1 - ((scrollCH - ambientCutoffs.at(i)) * 1 / ((ambientCutoffs.at(i+1)?? 1000) - ambientCutoffs.at(i)))
+				))))
+			})
+		})
+		main.dispatchEvent(new Event('scroll'))
+		//? Fishes
+		function FishGen() {
+			const quantity = Math.round(1 + Math.random() * 3)
+			SpawnShapes('fish', quantity * 3, {
+				y: Math.random() * 60 - 30,
+				ySpread: 30,
+				size: .3,
+				sizeSpread: .4,
+				ySpread: 20,
+				alternateDirection: true,
+				duration: 10000,
+				durationSpread: 4000,
+				timeSpread: 5000
+			})
+			setTimeout(FishGen , 4000 + Math.random() * 2000 + player.getVar('depth') * 3)
+		}
+		FishGen()
+
+		//# Helper functions
+		function PickOne(array) {
+			if (array.length === 2 && array.every(e => e instanceof Array) && array[0].every(e => typeof(e) === 'number') && array[0].length === array[1].length) {
+				const total = array[0].reduce((prv, cur) => prv + cur, 0)
+				const picked = Math.random() * total
+				let accum = 0
+				let ret
+				array[0].forEach((e, i) => {
+					if (ret) return
+					accum += e
+					if (accum > picked)
+						return ret = array[1][i]
+				})
+				return ret
+			}
+			return array.at(Math.floor(Math.random() * array.length))
+		}
+		function shuffleArray(array) {
+			for (let i = array.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[array[i], array[j]] = [array[j], array[i]];
+			}
+		}
+		function easeInOutSine(elapsed, initialValue, amountOfChange, duration) {
+			return -amountOfChange / 2 * (Math.cos(Math.PI * elapsed / duration) - 1) + initialValue;
+		}
+		function gaussianRand() {
+			let rand = 0
+			for (let i=0; i<3; i++)
+				rand += Math.random()
+			return rand / 3
+		}
+		function throttle(mainFunction, delay) {
+			let timerFlag = null; // Variable to keep track of the timer
+
+			// Returning a throttled version 
+			return (...args) => {
+				if (timerFlag === null) { // If there is no timer currently running
+					mainFunction(...args); // Execute the main function 
+					timerFlag = setTimeout(() => { // Set a timer to clear the timerFlag after the specified delay
+						timerFlag = null; // Clear the timerFlag to allow the main function to be executed again
+					}, delay)
+				}
+			}
+		}
+		function ScrollToBottom() {
+			if (Steptext.queue.length !== 0)
+				main.scrollTo({top: main.scrollHeight, behavior: 'instant'})
+			requestAnimationFrame(ScrollToBottom)
+		}
+		function ModulateBeam() {
+			const SPAN = 36
+			const INTERVAL = 1000
+			document.getElementById('lights').style.setProperty('--beam-width', `${Math.round(Math.random()*SPAN-SPAN/2)}ch`)
+			setTimeout(ModulateBeam, Math.random() * 500 + INTERVAL)
+		}
+		function CreateLog(title, content) {
+			logs.innerHTML = ''
+			const div = document.createElement('div')
+			div.classList.add('msg')
+			div.innerHTML = `<span class="input">${title}</span>${content}`
+			const close = document.createElement('div')
+			close.id = 'close'
+			close.textContent = 'x'
+			div.append(close)
+			close.addEventListener('click', () => {
+				document.body.classList.remove('log')
+				setTimeout(() => logs.innerHTML = '', 1000)
+			})
+			logs.append(div)
+		}
+		/**
+		* @param {{y: number, ySpread: number, dist: number, distSpread: number, duration: number, durationSpread: number, alternateDirection: number, size: number, sizeSpread: number, timeSpread: number}} options
+		*/
+		function SpawnShapes(type, amount=1, options={
+			y: 0, ySpread: 50, dist: 0, distSpread: 3, duration: 3000, durationSpread: 500, direction: 1, alternateDirection: 1, size: 1, sizeSpread: .2, timeSpread: 2000
+		}) {
+			const y = options.y?? 0
+			const ySpread = options.ySpread?? 50
+			const dist = options.dist?? 0
+			const distSpread = options.distSpread?? 3
+			const duration = options.duration?? 3000
+			const durationSpread = options.durationSpread?? 500
+			const direction = options.alternateDirection? (Math.random() < .5? 0 : 1) : options.direction?? 0
+			const size = options.size?? 1
+			const sizeSpread = options.sizeSpread?? 1
+			const timeSpread = options.timeSpread?? 2000
+
+			const fragment = document.createDocumentFragment()
+			for (let i=0; i<amount; i++)
+				fragment.append(CreateVisual(type,
+					y + gaussianRand() * ySpread - ySpread/2,
+					dist + Math.random() * distSpread - distSpread/2,
+					duration + gaussianRand() * durationSpread - durationSpread/2,
+					direction,
+					size + Math.random() * sizeSpread - sizeSpread/2,
+					gaussianRand() * timeSpread,
+					false
+				))
+			main.append(fragment)
+		}
+		function CreateVisual(clss, y=0, distance=1, duration=3000, direction=1, size=1, stagger=0, append=true) {
+			const div = document.createElement('div')
+			div.className = clss
+			div.classList.add('shape')
+			div.style.setProperty('--dist', distance)
+			div.style.setProperty('--dist-abs', Math.abs(distance))
+			div.style.setProperty('--dir', direction)
+			div.style.setProperty('--y', `${player.getVar('depth') + y}ch`)
+			div.style.setProperty('--size', size)
+			div.style.animationDuration = duration+'ms'
+			div.style.animationDelay = stagger+'ms'
+			div.style.zIndex = distance
+			if (!append)
+				return div
+			main.append(div)
+			setTimeout(() => div.remove(), duration + stagger)
+		}
+	</script>
+	<link rel="stylesheet" href="fish.css">
+</head>
+<body class="">
+	<div id="stats">
+		<div><span>Fish: </span><span id="caught">0</span></div>
+		<div><span>Depth: </span><span id="depth">0</span></div>
+	</div>
+	<div id="title">
+		<div>Fathomless</div>
+		<div>a tiny fishing game</div>
+		<div>by Rasutei</div>
+	</div>
+	<main>
+		<div id="content-wrapper">
+			<div id="messages"></div>
+			<div id="log-wrapper"><div id="logs"></div></div>
+			<input id="input" type="text" value="fish" autofocus="true" autocomplete="off">
+			<div id="lights-wrapper"><div id="lights"></div></div>
+		</div>
+		<div class="particles" style="--dist: 1"></div>
+		<div class="particles" style="--dist: 2"></div>
+		<div class="particles" style="--dist: -1"></div>
+		<div class="particles" style="--dist: -2"></div>
+	</main>
+	<div id="follower"></div>
+	<svg>
+		<filter id="waves">
+			<feTurbulence id="turbulenceh1" type="turbulence" numOctaves="10" seed="4" result="NOISE"></feTurbulence>
+			<feGaussianBlur stdDeviation="1" result="BLUR" in="DISPLACEMENT"></feGaussianBlur>
+			<feDisplacementMap in="SourceGraphic" result="DISPLACEMENT" in2="BLUR" scale="5"></feDisplacementMap>
+			<animate xlink:href="#turbulenceh1" attributeName="baseFrequency" dur="120s" keyTimes="0;0.5;1" values=".02 .04; .04 .08; .02 .04" repeatCount="indefinite"></animate>
+		</filter>
+		<filter id="dither">
+			<feTurbulence baseFrequency="1" numOctaves="5" type="fractalNoise" result="NOISE"></feTurbulence>
+			<feDisplacementMap scale="4" result="OUT" in="SourceGraphic" in2="NOISE"></feDisplacementMap>
+		</filter>
+	</svg>
+</body>
+</html>

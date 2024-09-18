@@ -1,0 +1,2848 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Fathomless</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+	<script type="module" data-info="https://stackoverflow.com/a/43834063">let l,e,t
+		='script',p=/(from\s+|import\s+)['"](#[\w\-]+)['"]/g,x='textContent',d=document,
+		s,o;for(o of d.querySelectorAll(t+'[type=inline-module]'))l=d.createElement(t),o
+		.id?l.id=o.id:0,l.type='module',l[x]=o[x].replace(p,(u,a,z)=>(e=d.querySelector(
+		t+z+'[type=module][src]'))?a+`/* ${z} */'${e.src}'`:u),l.src=URL.createObjectURL
+		(new Blob([l[x]],{type:'application/java'+t})),o.replaceWith(l)//inline
+	</script>
+	<script type="inline-module" id="steptext">
+		export class Steptext {
+			static bipInterval = 3
+			static bip = 0
+			static last_step = 0
+			static interval = 32
+			static effective_interval
+			static fast = false
+			static queue = ''
+			static close = []
+			static encodings = new Map([
+				['\\*\\*', ['b', 2]],
+				['__', ['u', 2]],
+				['~~', ['s', 2]],
+				['\\*', ['i', 1]],
+				['_', ['i', 1]],
+				['~', ['wave', 1]],
+				['!!', ['jitter', 2]],
+				['##', ['glow', 2]],
+			])
+			static ind_wrap = [
+				'wave',
+				'jitter',
+			]
+			static element = null
+
+			static get skipback() {
+				return this.close.reduce((prv, cur) => prv + cur.length, 0)
+			}
+			static step(now, audio=true) {
+				if (Steptext.queue.length > 0) {
+					Steptext.place()
+					Steptext.last_step += (Steptext.interval * (Steptext.fast? 1/3 : 1))
+					Steptext.bip++
+					const do_scroll = Steptext.element.scrollTop >= Steptext.element.scrollHeight - Steptext.element.clientHeight - 200
+					if (do_scroll)
+						Steptext.element.scrollTo({top: Steptext.element.scrollHeight})
+				}
+				else
+					Steptext.last_step = now
+				return setTimeout(Steptext.step, Steptext.interval * (Steptext.fast? 1/3 : 1))
+			}
+			static place() {
+				if (Steptext.queue.length == 0) return
+
+				while (Steptext.decode() || Steptext.htmlOpen() || Steptext.htmlClose()) null
+				if (Steptext.queue.length == 0) return
+
+				// Handle newlines and line breaks:
+				if (Steptext.queue.startsWith('\n') || Steptext.queue.startsWith('\r\n')) {
+					// Create a line break element (br or a custom element if needed):
+					Steptext.getInnermostChild().appendChild(document.createElement('br'))
+					Steptext.queue = Steptext.queue.slice(Steptext.queue[0] === '\r' ? 2 : 1)
+					return
+				}
+				if (Steptext.queue.startsWith('\\')) {
+					Steptext.queue = Steptext.queue.slice(1)
+					if (Steptext.queue.length)
+						Steptext.getInnermostChild().appendChild(document.createTextNode(Steptext.queue[0]))
+					return
+				}
+
+				// Handle regular text or individually wrapped characters:
+				if (Steptext.close.length && Steptext.close.filter(e => Steptext.ind_wrap.includes(e.match(/\w+/)[0])).length) {
+					const span = document.createElement('span')
+					const withSpaces = Steptext.queue.match(/^[^ ] */)
+					if (withSpaces) {
+						span.innerHTML = withSpaces[0].replaceAll(' ', '&nbsp;')
+						Steptext.queue = Steptext.queue.slice(withSpaces[0].length-1)
+					} else
+						span.innerHTML = Steptext.queue[0]
+					Steptext.getInnermostChild().appendChild(span)
+				} else {
+					if (Steptext.getInnermostChild()?.lastChild?.nodeType === 3) {
+						Steptext.getInnermostChild().lastChild.textContent += Steptext.queue[0]
+					} else {
+						const textNode = document.createTextNode(Steptext.queue[0])
+						Steptext.getInnermostChild().appendChild(textNode)
+					}
+				}
+
+				Steptext.queue = Steptext.queue.slice(1)
+			}
+			static decode() {
+				for (const [enc, [tag, size]] of Steptext.encodings.entries()) {
+					if (Steptext.queue.match(new RegExp('^' + enc))) {
+						if (Steptext.close.length && Steptext.close[0].match(/\w+/)[0] === tag) {
+							Steptext.close.shift()  // Remove closing tag
+						} else {
+							const element = document.createElement(tag)
+							Steptext.getInnermostChild().appendChild(element)
+							Steptext.close.unshift(`</${tag}>`)  // Add closing tag to handle nesting
+						}
+
+						Steptext.queue = Steptext.queue.slice(size)
+						return true
+					}
+				}
+				return false
+			}
+			static htmlOpen() {
+				const match = Steptext.queue.match(/^(<(\w+)(?: ([^>]+?))?>)[\s\S]+?<\/\2>/)
+				if (!match) return false
+
+				const tag = match[2]
+				const attributes = match[3]
+
+				const element = document.createElement(tag)
+
+				if (attributes)
+					Array.from(attributes.match(/([^=\s'"]+)(?:="(.*?)")?/g))
+						.map(m => m.match(/([^=\s'"]+)(?:="(.*?)")?/))
+						.forEach(([_, att, val]) => element.setAttribute(att, val))
+
+				Steptext.getInnermostChild().appendChild(element)
+				Steptext.close.unshift(`</${tag}>`)
+
+				Steptext.queue = Steptext.queue.slice(match[1].length)
+				return true
+			}
+			static htmlClose() {
+				if (Steptext.close.length && Steptext.queue.startsWith(Steptext.close[0])) {
+					Steptext.queue = Steptext.queue.slice(Steptext.close[0].length)
+					Steptext.close.shift()
+					return true
+				}
+				return false
+			}
+			static getInnermostChild() {
+				// Get the innermost child by applying .lastElementChild as many times as there are tags in the close property:
+				let target = Steptext.element
+				for (let i = 0; i < Steptext.close.length; i++) {
+					target = target.lastElementChild
+				}
+				return target
+			}
+			static skip() {
+				while(Steptext.queue.length > 0) Steptext.place()
+				Steptext.element.scrollTo({top: Steptext.element.scrollHeight})
+			}
+		}
+	</script>
+	<script type="inline-module" id="raspg">
+		/** @typedef {{identifier?: string, components?: Array<Component>, register?: boolean}} ObjectProps*/
+		/** @typedef {{name?: string, introduction?: string, description?: string, components?: Array<Component>, register?: boolean}} AreaProps */
+		/** @typedef {{value: number, add: number, mult: number, min:number, max: number, roundToNearest: number}} StatProps */
+		/** @typedef {{plural: string, pronoun: string}} DescriptorProps */
+		/** @typedef {{string | Array<string> | RegExp}} Match */
+		/** @typedef {(this: CompositeObject, self: CompositeObject, ...args: any[]) => void} InteractionFunction */
+		/** @typedef {(this: GameEvent, triggerer: CompositeObject, ...args) => void} EventHandler */
+		/** @typedef {(this: CompositeObject) => void} SynergyOperation */
+		/** @typedef {'valueError' | 'notFound' | 'missingComponent' | 'redundantOperation'} OpFailReason */
+
+
+		//! MARK: Base Classes
+		export class CompositeObject {
+			/**
+			* @desc Class instance ID index.
+			* @type {number}
+			*/
+			static idIndex = 0
+			/**
+			* @desc Collection of all instances of this class.
+			* @type {Map<string, Object>}
+			*/
+			static all = new Map()
+			/**
+			* @desc Unique numeric identifier.
+			* @type {number}
+			*/
+			id
+			/**
+			* @desc Unique string identifier.
+			* @type {string}
+			*/
+			identifier
+			/**
+			* @desc Components that have been added to the object.
+			* @type {Set<Component>}
+			*/
+			components = new Set()
+
+			/**
+			* Creates a CompositeObject.
+			* @param {ObjectProps} props Initial object properties.
+			*/
+			constructor (props={identifier:undefined, components:[], register:true}) {
+				if (props.components)
+					this.addComponents(...props.components)
+				if (props.register?? true)
+					CompositeObject.register(this, props.identifier?? undefined)
+			}
+
+			/**
+			* Register an instance to the class' list.
+			* @param {CompositeObject} object
+			* @param {string} identifier Optional string identifier that can also be used to access the object.
+			*/
+			static register(object, identifier=undefined) {
+				this.all.set(this.idIndex, object)
+				object.id = this.idIndex
+				object.identifier = identifier
+				if (identifier) {
+					if (this.all.has(identifier))
+						throw new Error(`Identifier '${identifier}' is not unique${this.name}`)
+					this.all.set(identifier, object)
+					object.identifier = identifier
+				}
+				this.idIndex++
+			}
+			/**
+			* Unregister an instance from the class' list.
+			* @param {CompositeObject} object
+			*/
+			static unregister(object) {
+				this.all.delete(object.id)
+				if (object.identifier)
+					this.all.delete(object.identifier)
+			}
+			/**
+			* Gets an instance from the class' list.
+			* @param {number | string} id The object's numeric ID or string identifier.
+			* @return {CompositeObject | null}
+			*/
+			static get(id) {
+				if (this.all.has(id))
+					return this.all.get(id)
+				else return null
+			}
+
+			get isRegistered() { return typeof(this.id) === 'number' }
+			get isOriginal() { return this.isRegistered && CompositeObject.all.get(this.id) === this }
+			get isClone() { return this.isRegistered && CompositeObject.all.get(this.id) !== this }
+
+			toString() {
+				return `[(${this.id}) ${this.identifier?? 'no identifier'}${this.hasComponents(CCountable)? ` x ${this.count}`:''}]`
+			}
+			/**
+			* Adds components to the object.
+			* @param {Component} components
+			*/
+			addComponents(...components) {
+				for (const component of components) {
+					if (this.components.has(component)) continue
+					component.addTo(this)
+				}
+				return this
+			}
+			/**
+			* Returns whether the object is missing any of the given components.
+			* @param  {...Component} components
+			*/
+			hasComponents(...components) {
+				return this.components.isSupersetOf(new Set(components))
+			}
+			/**
+			* Creates a clone of the object.
+			*/
+			clone() {
+				const obj = new CompositeObject({register: false})
+				Object.defineProperties(obj, Object.getOwnPropertyDescriptors(CompositeObject.get(this.id)))
+				obj.addComponents(...this.components)
+				return obj
+			}
+			delete() {
+				if (this.isOriginal)
+					CompositeObject.unregister(this)
+				this.id = null
+				this.identifier = null
+				for (const component of this.components)
+					if (component.__delete)
+						component.__delete(this)
+			}
+		}
+		export class Component {
+			/**
+			* @desc Components this component depends on to function. Will be added along with it, if not present.
+			* @type {Array<Component>}
+			*/
+			static dependencies = []
+			/**
+			* @desc Operations to be executed when sets of Components are present in the same object.
+			* @type {Array<Array<Set<Component>, (object: CompositeObject) => void>>}
+			*/
+			static synergies = []
+
+			/**
+			* Add the component to an object.
+			* @param {CompositeObject} objects
+			*/
+			static addTo(...objects) {
+				if (this.dependencies.length > 0)
+					for (const dependency of this.dependencies)
+						for (const object of objects)
+							dependency.addTo(object)
+				const descriptors = Object.getOwnPropertyDescriptors(this)
+				delete descriptors.prototype
+				delete descriptors.length
+				delete descriptors.dependencies
+				delete descriptors.name
+				for (const object of objects) {
+					for (const [key, attributes] of Object.entries(descriptors)) {
+						if (key.startsWith('__')) continue
+						if (attributes.value && !(attributes.value instanceof Function))
+							attributes.value = structuredClone(attributes.value)
+						// if (attributes.value && attributes.value instanceof Function)
+						// 	attributes.value = (...args) => this[key].apply(object, args)
+						Object.defineProperty(object, key, attributes)
+					}
+					object.components?.add(this)
+					if (this.__postAddition)
+						this.__postAddition(object)
+					Synergy.evaluate(object, this)
+				}
+			}
+		}
+		export class Synergy {
+			static all = []
+			components = new Set()
+			operation
+
+			/**
+			* @param {Array<Component>} components
+			* @param {SynergyOperation} operation
+			*/
+			constructor(components, operation) {
+				this.components = new Set(components)
+				this.operation = operation
+			}
+
+			/**
+			* Register a new component synergy.
+			* @param {Array<Component>} components
+			* @param {SynergyOperation} operation
+			*/
+			static register(components, operation) {
+				if (components.length < 2)
+					throw new Error(`Synergies require 2 or more Components`)
+				this.all.push(new Synergy(components, operation))
+				return this
+			}
+			/**
+			* Evaluates what synergies are applicable to the object and applies them.
+			* @param {CompositeObject} object
+			* @param {Component} lastAdded
+			*/
+			static evaluate(object, lastAdded) {
+				const applicableSynergies = this.all.filter(s => {
+					const synergyComponentSet = new Set(s.components)
+					return object.components?.isSupersetOf(synergyComponentSet)
+					&& (
+						object.components
+							?.intersection(synergyComponentSet)
+							.difference(new Set([lastAdded]))
+							.size
+						=== synergyComponentSet.size-1
+					)
+				})
+				for (const synergy of applicableSynergies)
+					synergy.operation.apply(object)
+			}
+		}
+		export class GameEvent {
+			/**
+			* @desc Collection of all instances of this class.
+			* @type {Map<string, Object>}
+			*/
+			static all = new Map()
+			/**
+			* @desc The event's name and identifier.
+			* @type {string}
+			*/
+			name
+			/**
+			* @desc The event's handler.
+			* @type {EventHandler}
+			*/
+			fn
+			/**
+			* @desc Array of strings describing the arguments required by the event. Only for help debugging, not strictly required.
+			* @type {EventHandler}
+			*/
+			arguments = []
+			/**
+			* @desc Array of functions listening to the event.
+			* @type {Array<EventHandler>}
+			*/
+			listeners = new Set()
+
+			/**
+			* Creates an event.
+			* @param {string} name Name and identifier.
+			* @param {EventHandler} fn
+			* @param {boolean} register
+			*/
+			constructor(name, fn, args=[], register=true) {
+				this.name = name
+				this.fn = fn
+				if (args?? false)
+					this.arguments = args
+				if (register?? true)
+					GameEvent.register(this)
+			}
+
+			/**
+			* Register an instance to the class' list.
+			* @param {GameEvent} event
+			*/
+			static register(event) {
+				if (this.all.has(event.name))
+					throw new Error(`Identifier '${event.name}' is not unique`)
+				else
+					this.all.set(event.name, event)
+			}
+			/**
+			* Unregister an instance from the class' list.
+			* @param {GameEvent} event
+			*/
+			static unregister(event) {
+				this.all.delete(event.name)
+			}
+			/**
+			* Gets an instance from the class' list.
+			* @param {number | string} name
+			* @return {GameEvent | null}
+			*/
+			static get(name) {
+				if (this.all.has(name))
+					return this.all.get(name)
+				else return null
+			}
+			static trigger(name, triggerer, ...args) {
+				if (!this.all.has(name))
+					throw new Error(`Trying to trigger unexistent event '${name}'`)
+				this.get(name).trigger(triggerer, ...args)
+			}
+
+			/**
+			* Triggers the event.
+			* @param {CompositeObject} triggerer Object triggering the event.
+			* @param {...any} args
+			*/
+			trigger(triggerer, ...args) {
+				if (this.arguments && args.length < this.arguments)
+					throw new Error(`Trying to trigger event '${this.name}' with insufficient arguments. Arguments required: ${this.arguments.join(', ')}`)
+				if (this.fn)
+					this.fn.apply(this, [triggerer, ...args])
+				for (const listener of this.listeners)
+					listener.apply(this, [triggerer, ...args])
+			}
+			/**
+			* Register a handler function to be triggered with this event.
+			* @param {EventHandler} fn
+			*/
+			listen(fn) {
+				this.listeners.add(fn)
+			}
+			/**
+			* Unregister a handler function from being triggered with this event.
+			* @param {EventHandler} fn
+			*/
+			unlisten(fn) {
+				this.listeners.delete(fn)
+			}
+		}
+		export class Stat {
+			/**
+			* @desc The map of calculations used by different stats.
+			* @type {Map<string, (this: Stat) => number>}
+			*/
+			static _calculations = new Map([['default', function(stat) {return stat.value + stat.add + stat.value * stat.mult}]])
+			/**
+			* @desc The map of Stat prototypes, with their respective default values.
+			* @type {Map<string, (this: Stat) => number>}
+			*/
+			static _prototypes = new Map()
+			name
+			value
+			add
+			mult
+			min
+			max
+			/**
+			* @desc To which nearest numerical value the stat should be rounded to when calculated.
+			* @type {number}
+			*/
+			roundToNearest
+			/**
+			* @desc Key for the calculation to be used when calculating a final value for the Stat.
+			* @type {number}
+			*/
+			calculationKey
+
+
+			/**
+			* Creates a new Stat instance. If there's an existing prototype under `name`, a copy of it will be returned with its properties replaced by present arguments.
+			* @param {string} name
+			* @param {StatProps} defaults
+			* @param {number} calculationKey Key for the calculation to be used when calculating a final value for the Stat.
+			*/
+			constructor(name, defaults={value: 0, add: 0, mult: 0, min:0, max: Number.MAX_VALUE, roundToNearest: 1}, calculationKey='default') {
+				const original = Stat._prototypes.get(name)
+				if (original) {
+					this.name = original.name
+					this.value = original.value
+					this.add = original.add
+					this.mult = original.mult
+					this.min = original.min
+					this.max = original.max
+					this.roundToNearest = original.roundToNearest
+					this.calculationKey = original.calculationKey
+				} else {
+					this.name = name
+					this.value = defaults.value?? 0
+					this.add = defaults.add?? 0
+					this.mult = defaults.mult?? 0
+					this.min = defaults.min?? 0
+					this.max = defaults.max?? Number.MAX_VALUE
+					this.roundToNearest = defaults.roundToNearest?? 1
+					this.calculationKey = calculationKey
+					Stat._prototypes.set(name, this)
+					Stat[name] = this
+				}
+			}
+
+			/**
+			* Returns a final value for the stat.
+			* @param {boolean} round Whether the value should be rounded.
+			*/
+			calculate(round=true) {
+				const result = (Stat._calculations.get(this.calculationKey?? 'default')?? Stat._calculations.get('default'))(this)
+				if (round)
+					if (this.roundToNearest === 1)
+						return Math.round(result)
+					else
+						return Math.round(result / this.roundToNearest) * this.roundToNearest
+				return result
+			}
+			new(values={value: this.value, add: this.add, mult: this.mult, min:0, max: this.max, roundToNearest: this.roundToNearest}) {
+				const newStat = new Stat(this.name)
+				newStat.name = values.name?? this.name
+				newStat.value = values.value?? this.value
+				newStat.add = values.add?? this.add
+				newStat.mult = values.mult?? this.mult
+				newStat.min = values.min?? this.min
+				newStat.max = values.max?? this.max
+				newStat.roundToNearest = values.roundToNearest?? this.roundToNearest
+				return newStat
+			}
+		}
+		export class OperationFail {
+			/**
+			* @desc The object relevant to the failed operation.
+			* @type {CompositeObject}
+			*/
+			object
+			/**
+			* @desc Brief string describing the reason why the operation failed.
+			* @type {OpFailReason}
+			*/
+			reason
+			/**
+			* @desc Error object including provided message and stack trace.
+			* @type {OpFailReason}
+			*/
+			error
+
+			/**
+			* @param {CompositeObject} object The object relevant to the failed operation.
+			* @param {OpFailReason} reason Brief string describing the reason why the operation failed.
+			*/
+			constructor(operation, object, reason, message) {
+				this.operation = operation
+				this.object = object
+				this.reason = reason
+				this.error = new Error(`${operation} - ${object} - ${reason}\n${message}`)
+			}
+
+			/**
+			* Log the operation's properties, message and stack trace to the console.
+			* @param {'info' | 'warn' | 'error'} level 
+			*/
+			log(level='warn') {
+				console[level](this.error)
+			}
+		}
+		//# MARK: CompositeObjects
+		export class Interaction extends CompositeObject {
+			/**
+			* @desc Collection of all instances of this class.
+			* @type {Map<string, Object>}
+			*/
+			static all = new Map()
+			/**
+			* @desc Interaction name. Conventionally a verb describing what it does.
+			* @type {string}
+			*/
+			name
+			/**
+			* @desc A short description for the interaction.
+			* @type {string}
+			*/
+			description
+			/**
+			* @desc Function that consists the interaction itself.
+			* @type {InteractionFunction}
+			*/
+			fn
+
+			/**
+			* Creates an Interaction.
+			* @param {string} name Interaction name. Conventionally a verb describing what it does.
+			* @param {string} description A short description for the interaction.
+			* @param {Match} match What input(s) should match the interaction.
+			* @param {InteractionFunction} fn Function that consists the interaction itself.
+			* @param {ObjectProps} props Initial object properties.
+			*/
+			constructor(name, description, match, fn, props={identifier:undefined, components:[], register:true}) {
+				super({identifier: props.identifier?? `interaction_${name}`, components: props.components, register: props.register?? true})
+				this.addComponents(CMatch)
+				this.name = name
+				this.description = description
+				this.match = match
+				this.fn = fn
+				if (props.register?? true)
+					Interaction.register(this, props.identifier?? name)
+			}
+
+			/**
+			* Register an instance to the class' list.
+			* @param {Interaction} interaction
+			*/
+			static register(interaction) {
+				if (this.all.has(interaction.name))
+					throw new Error(`Identifier '${interaction.name}' is not unique`)
+				this.all.set(interaction.name, interaction)
+			}
+			/**
+			* Unregister an instance from the class' list.
+			* @param {Interaction} interaction
+			*/
+			static unregister(interaction) {
+				this.all.delete(interaction.id)
+				if (interaction.identifier)
+					this.all.delete(interaction.identifier)
+			}
+			/**
+			* Gets an instance from the class' list.
+			* @param {number | string} id The object's numeric ID or string identifier.
+			* @return {Interaction | null}
+			*/
+			static get(id) {
+				if (this.all.has(id))
+					return this.all.get(id)
+				else return null
+			}
+			/**
+			* Call the interaction using `object` as the `this`.
+			* @param {CompositeObject} object
+			*/
+			callFrom(object, ...args) {
+				this.fn(object, ...args)
+				if (object.hasComponents(CInteractable))
+					object.interactions[`${this.name}Count`] += 1
+			}
+			delete() {
+				Interaction.unregister(this)
+				CompositeObject.all.forEach(object => {
+					if (object.hasComponents(CInteractable))
+						object.removeInteraction(this)
+				})
+				super.delete()
+			}
+		}
+		export class AArea extends CompositeObject {
+			/**
+			* @desc Collection of all instances of this class.
+			* @type {Map<string, Object>}
+			*/
+			static all = new Map()
+			/**
+			* @desc Array comprising of areas this area connects to.
+			* @type {Array<AArea}
+			*/
+			connections = []
+			visited = 0
+
+			/**
+			* Creates an area object.
+			* @param {string} identifier
+			* @param {AreaProps} props
+			*/
+			constructor(identifier, props={name:'', introduction:'', description:'', components:[], register:true}) {
+				super({identifier, components: props.components?? [], register: props.register?? true})
+				this.addComponents(CStrings, CInventory)
+				this.setString('name', props.name?? identifier)
+				this.registerShorthand('name')
+				if (props.introduction?? false) {
+					this.setString('intro', props.introduction)
+					this.registerShorthand('intro')
+				}
+				if (props.description?? false) {
+					this.setString('description', props.description)
+					this.registerShorthand('description')
+				}
+				if (props.register?? true)
+					AArea.register(this)
+			}
+
+			/**
+			* Register an instance to the class' list.
+			* @param {Area} area
+			*/
+			static register(area) {
+				if (this.all.has(area.identifier))
+					throw new Error(`Identifier '${area.identifier}' is not unique`)
+				this.all.set(area.identifier, area)
+			}
+			/**
+			* Unregister an instance from the class' list.
+			* @param {Area} area
+			*/
+			static unregister(area) {
+				this.all.delete(area.id)
+				if (area.identifier)
+					this.all.delete(area.identifier)
+			}
+			/**
+			* Gets an instance from the class' list.
+			* @param {number | string} id The object's numeric ID or string identifier.
+			* @return {AArea | null}
+			*/
+			static get(id) {
+				if (this.all.has(id))
+					return this.all.get(id)
+				else return null
+			}
+
+			/**
+			* Adds an area to this area's connections.
+			* @param {AArea} area
+			* @param {boolean} twoway Whether the connection should be added from the other side.
+			*/
+			addConnection(area, twoway=false) {
+				if (this.connections.includes(area)) {
+					console.warn(`Trying to add existing connection between '${this.identifier}' and '${area.identifier}'`)
+					return this
+				}
+				this.connections.push(area)
+				this.connections[area.identifier] = area
+				if (twoway)
+					area.addConnection(this)
+				return this
+			}
+			/**
+			* Removes an area from this area's connections.
+			* @param {AArea} area
+			* @param {boolean} twoway Whether the connection should be removed from the other side.
+			*/
+			removeConnection(area, twoway=false) {
+				if (!this.connections.includes(area)) {
+					console.warn(`Trying to remove nonexistent connection between '${this.identifier}' and '${area.identifier}'`)
+					return this
+				}
+				this.connections.splice(this.connections.indexOf(area), 1)
+				delete this.connections[area.identifier]
+				if (twoway)
+					area.removeConnection(this)
+				return this
+			}
+			delete() {
+				AArea.unregister(this)
+				for (const object of this.inventory)
+					object.delete()
+				super.delete()
+			}
+		}
+		//# MARK: Components
+		export class CMatch extends Component {
+			/**
+			* @desc A string, list of strings, or RegExp rule describing what inputs should match the object. If an array, ideally from most specific/longest to least specific/shortest.
+			* @type {string | Array<string> | RegExp}
+			*/
+			static match
+
+			/**
+			* Returns the result of matching the input string to the object's `match`.
+			* @param {string} input
+			* @returns {RegExpMatchArray}
+			*/
+			static matchAgainst(input) {
+				if (this.match instanceof Array)
+					return input.match(this.match.find(e => input.match(e)))
+				return input.match(this.match)
+			}
+		}
+		export class CTags extends Component {
+			/**
+			* @desc Strings describing properties of the object. Conventionally uppercase.
+			* @type {Set<String>}
+			*/
+			static tags = new Set()
+
+			/**
+			* Adds given tag to object.
+			* @param {string} tag
+			* @this {CompositeObject}
+			*/
+			static addTag(tag) {
+				this.tags.add(tag)
+				return this
+			}
+			/**
+			* Adds given tags to object.
+			* @param  {Array<string>} tags
+			* @this {CompositeObject}
+			*/
+			static addTags(...tags) {
+				for (const tag of tags)
+					this.addTag(tag)
+				return this
+			}
+			/**
+			* Removes given tag from object.
+			* @param {string} tag
+			* @this {CompositeObject}
+			*/
+			static removeTag(tag) {
+				this.tags.delete(tag)
+				return this
+			}
+			/**
+			* Removes given tags from object.
+			* @param  {...any} tags
+			* @this {CompositeObject}
+			*/
+			static removeTags(...tags) {
+				for (const tag of tags)
+					this.removeTag(tag)
+				return this
+			}
+			/**
+			* Returns whether the object has the given tag.
+			* @param {string} tag
+			*/
+			static hasTag(tag) {
+				return this.tags.has(tag)
+			}
+			/**
+			* Returns whether the object has all the given tags.
+			* @param {string} tag
+			*/
+			static hasTags(...tags) {
+				for (const tag of tags)
+					if (!this.hasTag(tag))
+						return false
+				return true
+			}
+		}
+		export class CStrings extends Component {
+			/**
+			* @desc A map containing global strings in the module itself.
+			* @type {Map<string, string>}
+			*/
+			static __globalStrings = new Map()
+			/**
+			* @desc A map containing global replacers in the module itself.
+			* Placeholders should be preceded by the character `$`; `\$` will be ignored.
+			*
+			* Capitalized placeholders will capitalize the string returned by the replacer.
+			* Uppercase placeholders will capitalize all words in the string returned by the replacer.
+			* @type {Map<string, (this: CompositeObject) => string>}
+			*/
+			static __globalPlaceholders = new Map()
+			/**
+			* @desc A map containing the object's strings.
+			* @type {Map<string, string | () => string>}
+			*/
+			static strings = new Map()
+			/**
+			* @desc A map containing the object's placeholder strings and their replacement functions.
+			* Placeholders should be preceded by the character `$`; `\$` will be ignored.
+			*
+			* Capitalized placeholders will capitalize the string returned by the replacer.
+			* Uppercase placeholders will capitalize all words in the string returned by the replacer.
+			* @type {Map<string, (this: CompositeObject) => string>}
+			*/
+			static placeholders = new Map()
+
+			/**
+			* @param {string} key
+			* @param {string | () => string} string
+			* @this {CompositeObject}
+			*/
+			static setString(key, string) {
+				this.strings.set(key, string)
+				return this
+			}
+			/**
+			* @param {...Array<string, string>} pairs
+			* @this {CompositeObject}
+			*/
+			static setStrings(...pairs) {
+				for (const pair of pairs)
+					this.setString(...pair)
+				return this
+			}
+			/**
+			* @param {string} key Key to the string.
+			* @param {boolean} defaultFallback Whether the default string of same key should be returned, if it exists.
+			*/
+			static getString(key, defaultFallback=false) {
+				let found = this.strings.get(key)?? ''
+				if (found === '' && defaultFallback)
+					found = Defaults.getString(key)?? ''
+				if (typeof(found) === 'function')
+					return found.apply(this)
+				else
+					return found
+			}
+			/**
+			* Register a string shorthand to the object itself. The string can then be accessed as `object.$<shorthand>`.
+			* @param {string} shorthand The name of the shorthand. Lowercase alphanumeric and underscore only.
+			* @param {string} key The key to the string it should refer to. Defaults to the same as the shorthand.
+			* @param {boolean} registerPlaceholder Whether the shorthand should be registered as a replacer as well.
+			*/
+			static registerShorthand(shorthand, key=shorthand, registerPlaceholder=true) {
+				if (shorthand.match(/[^\w]/))
+					throw new Error(`Trying to register string shorthand '${shorthand}', which contains non-word characters.`)
+				if (this['$' + shorthand])
+					delete this['$' + shorthand]
+				Object.defineProperty(this, `$${shorthand}`, {
+					get() { return this.getString(key) },
+					set(v) { this.setString(key, v) },
+					configurable: true
+				})
+				if (registerPlaceholder)
+					this.registerPlaceholder(shorthand, (object) => object.getString(key))
+				return this
+			}
+			/**
+			* Returns a copy of the string with all placeholders replaced.
+			* Placeholders should be preceded by the character `$`; `\$` will be ignored.
+			*
+			* Capitalized placeholders will capitalize the string returned by the replacer.
+			* Uppercase placeholders will capitalize all words in the string returned by the replacer.
+			* @param {string} string
+			*/
+			static parseString(string, recursive=true) {
+				let parsed = string.slice()
+				let objectPHs = Array.from(this.placeholders.keys())
+				let foundPHs = Array.from(parsed.matchAll(/(?<!\\)\$([\w]+)/g)).map(m => m[1])
+					.filter(p => objectPHs.includes(p.toLowerCase()))
+				while (foundPHs.length > 0) {
+					for (const found of foundPHs)
+						if (objectPHs.includes(found.toLowerCase()))
+							parsed = parsed.replace(new RegExp(`\\$${found}`),
+								found[0] === found[0].toUpperCase()?
+								(found === found.toUpperCase()?
+									capitalize(this.placeholders.get(found.toLowerCase())(this), true)
+									: capitalize(this.placeholders.get(found.toLowerCase())(this)))
+								: this.placeholders.get(found.toLowerCase())(this)
+							)
+					if (recursive)
+						foundPHs = Array.from(parsed.matchAll(/(?<!\\)\$([\w]+)/g)).map(m => m[1])
+							.filter(p => objectPHs.includes(p.toLowerCase()))
+					else break
+				}
+				return parsed
+			}
+			/**
+			* Registers a placeholder and replacer function for parsing strings.
+			* Placeholders should be preceded by the character `$`; `\$` will be ignored.
+			*
+			* Capitalized placeholders will capitalize the string returned by the replacer.
+			* Uppercase placeholders will capitalize all words in the string returned by the replacer.
+			* @param {string} placeholder Placeholder to be sought and replaced.
+			* @param {(object: CompositeObject) => string} replacer Function that will return the replacement string.
+			*/
+			static registerPlaceholder(placeholder, replacer) {
+				if (placeholder.match(/\s/))
+					throw new Error(`Trying to register string placeholder '${placeholder}', which contains whitespace characters.`)
+				this.placeholders.set(placeholder, replacer)
+			}
+		}
+		export class CVariables extends Component {
+			/**
+			* @desc Map from strings to variables pertaining to the object's dynamic functionality.
+			* @type {Map<string, any>}
+			*/
+			static vars = new Map()
+
+			/**
+			* Registers a new variable in the object.
+			* @param {string} name
+			* @param {any} initialValue
+			* @this {CompositeObject}
+			*/
+			static registerVariable(name, initialValue=undefined) {
+				this.vars.set(name, {value: initialValue, initial: initialValue})
+				return this
+			}
+			/**
+			* Sets the value of a variable in the object.
+			* @param {string} name
+			* @param {any} value
+			* @this {CompositeObject}
+			*/
+			static setVar(name, value) {
+				if (!this.vars.has(name))
+					return new OperationFail('setVar', this, "notFound", `Trying to set variable '${name}' on '${this}', but it isn't registered`).log()
+				this.vars.get(name).value = value
+				return this
+			}
+			/**
+			* Returns the value of a variable in the object. Returns `null` if variable does not exist in the object.
+			* @param {string} name
+			* @returns {any | null}
+			*/
+			static getVar(name) {
+				return this.vars.has(name)?
+					this.vars.get(name).value
+					: new OperationFail('getVar', this, "notFound", `Trying to get variable '${name}' on '${this}', but it isn't registered`).log()
+			}
+			/**
+			* Resets the variable to its registered initial value. Returns that value.
+			* @param {string} name
+			*/
+			static resetVar(name) {
+				if (!this.vars.has(name))
+					return new OperationFail('resetVar', this, "notFound", `Trying to reset variable '${name}' on '${this}', but it isn't registered`).log()
+				const variable = this.vars.get(name)
+				variable.value = variable.initial
+				return variable.value
+			}
+			/**
+			* Change the value of a variable in the object by performing an operation on current value. Returns the updated value.
+			* @param {string} name
+			* @param {(value: any) => any} operation
+			* @param {any} valueIfUnset
+			* @returns {any}
+			*/
+			static alterVar(name, operation, valueIfUnset=0) {
+				if (!this.vars.has(name))
+					return new OperationFail('alterVar', this, "notFound", `Trying to alter variable '${name}' on '${this}', but it isn't registered`).log()
+				const variable = this.vars.get(name)
+				return variable.value = operation(variable.value === undefined? valueIfUnset : variable.value)
+			}
+		}
+		export class CDescriptors extends Component {
+			/**
+			* @desc Array of components this component depends on to function.
+			* @type {Map<string, any>}
+			*/
+			static dependencies = [CStrings]
+
+
+			/**
+			* Sets the object's descriptors.
+			* @param {string} article Appropriate article for the object (i.e. a/an/the).
+			* @param {string} singular Appropriate singular for the object.
+			* @param {string} description Description for the object. Defaults to "article singular".
+			* @param {DescriptorProps} props Extra properties. `"they"` will always replace the pronoun if the object has CCountable and `count > 1`.
+			* @this {CompositeObject}
+			*/
+			static setDescriptors(article, singular, description=article+' '+singular, props={plural:singular+'s', pronoun:'it'}) {
+				this.setString('an', article)
+				this.registerShorthand('an')
+				this.setString('it', props.pronoun?? 'it')
+				this.registerShorthand('it')
+				this.setString('singular', singular)
+				this.registerShorthand('singular')
+				this.setString('plural', props.plural?? singular+'s')
+				this.registerShorthand('plural')
+				this.setString('description', description)
+				this.registerShorthand('description')
+				this.setString('name', function() { return (this.hasComponents(CCountable) && this.count > 1)?
+					`${this.count} ${this.$plural?? ''}`
+					: `${this.$an?? ''} ${this.$singular?? ''}`
+				})
+				this.registerShorthand('name', 'name', false)
+				this.registerPlaceholder('name', function(object) { return object.getString('name') })
+				this.setString('they', function() {return (this.hasComponents(CCountable) && this.count > 1)? 'they' : this.getString('it') })
+				this.registerShorthand('they')
+				return this
+			}
+		}
+		export class CCountable extends Component {
+			/**
+			* @desc Amount of items the object represents.
+			* @type {number}
+			*/
+			static c = 1
+
+			static get count() { return this.c }
+			static set count(v) {
+				this.c = v
+				if (v <= 0 && this.hasComponents(COwnable))
+					this.owner?.removeItem(this)
+				if (v < 0) {
+					console.warn(`Item ${this} was set to negative value. Clamped to 0`)
+					this.c = 0
+				}
+			}
+			/**
+			* Splits some amount of the item off and returns it as a new instance.
+			* @param {number} quantity
+			* @return {CompositeObject}
+			*/
+			static split(quantity) {
+				const newItem = this.clone()
+				this.count -= quantity
+				newItem.count = quantity
+				if (this.hasComponents(COwnable))
+					newItem.setOwner(undefined)
+				return newItem
+			}
+		}
+		export class CInteractable extends Component {
+			/**
+			* @desc A set of Interaction instances.
+			* @type {Set<Interaction>}
+			*/
+			static interactions = new Set()
+
+			static get interactions() { return new Set(this.interactions) }
+			/**
+			* Adds the interaction to the object.
+			* @param {Interaction | string | number} interaction Interaction instance or its name or ID.
+			* @this {CompositeObject}
+			*/
+			static addInteraction(interaction) {
+				// debugger
+				if (typeof(interaction) === 'string' || typeof(interaction) === 'number') {
+					interaction = Interaction.get(interaction)
+					if (interaction === null)
+						return new OperationFail('addInteraction', this, "notFound", `Trying to add interaction '${interaction}' to '${this}', but it doesn't exist.`)
+				}
+				const caller = (...args) => {
+					this.interactions[`${interaction.name}Count`] += 1
+					return interaction.fn.apply(this, ...args)
+				}
+				if (this.findInteraction(interaction.name, false))
+					return this
+				this.interactions.add(interaction)
+				this.interactions[interaction.name] = caller
+				this.interactions[`${interaction.name}Count`] = 0
+				return this
+			}
+			/**
+			* Adds the interactions to the object.
+			* @param {Array<Interaction>} interactions
+			* @this {CompositeObject}
+			*/
+			static addInteractions(...interactions) {
+				for (const interaction of interactions)
+					this.addInteraction(interaction)
+				return this
+			}
+			/**
+			* Removes the interaction from the object.
+			* @param {Interaction | string | number} interaction Interaction instance or its name or ID.
+			* @this {CompositeObject}
+			*/
+			static removeInteraction(interaction) {
+				if (typeof(interaction) === 'string' || typeof(interaction) === 'number') {
+					interaction = this.findInteraction(interaction, false)
+					if (interaction instanceof OperationFail)
+						return interaction
+				}
+				this.interactions.delete(interaction)
+				delete this.interactions[interaction.name]
+				delete this.interactions[`${interaction.name}Count`]
+			}
+			/**
+			* Removes the interactions from the object.
+			* @param {Array<Interaction>} interactions
+			* @this {CompositeObject}
+			*/
+			static removeInteractions(...interactions) {
+				for (const interaction of interactions)
+					this.removeInteraction(interaction)
+				return this
+			}
+			/**
+			* Gets the interaction by name or ID. Returns it if found, false if not found. Calls the interaction if `call == true`.
+			* @param {string | number} identifier
+			* @param {boolean} call
+			* @return {Interaction | null}
+			*/
+			static findInteraction(identifier, call=true, ...args) {
+				for (const interaction of this.interactions.values())
+					if (interaction.name === identifier || interaction.id === identifier) {
+						if (call)
+							interaction.callFrom(this, ...args)
+						return interaction
+					}
+				return null
+			}
+			/**
+			* Finds the first matching Interaction. Returns it if found, false if not found. Calls the interaction if `call == true`.
+			* @param {string} input
+			* @param {boolean} call
+			* @return {Interaction | null}
+			*/
+			static matchInteraction(input, call=true, ...args) {
+				const matches = []
+				for (const interaction of this.interactions.values())
+					if (interaction.matchAgainst(input)) {
+						matches.push([interaction.matchAgainst(input), interaction])
+					}
+				matches.sort((a, b) => b[0][0].length - a[0][0].length)
+				if (matches.length === 0)
+					return null
+				if (call)
+					matches[0][1].callFrom(this, ...args)
+				return matches[0][1]
+			}
+		}
+		export class CInventory extends Component {
+			static dependencies = [CStrings]
+			static inventory = []
+
+			static __delete(object) {
+				for (const obj of object.inventory)
+					obj.delete()
+			}
+
+			/**
+			* Gives an item to the object's inventory.
+			* @param {CompositeObject} item
+			* @param {number} quantity
+			* @this {CompositeObject}
+			* @return {CompositeObject | OperationFail}
+			*/
+			static giveItem(item, quantity=undefined) {
+				if (quantity <= 0)
+					return new OperationFail('giveItem', item, 'valueError', `Trying to give zero or negative quantity of ${item} to ${this}`).log()
+				if (!item.hasComponents(COwnable))
+					return new OperationFail('giveItem', item, 'missingComponent', `Trying to give item ${item}, which does not have the COwnable component, to ${this}`).log()
+				if (item.owner === this)
+					return new OperationFail('giveItem', item, 'redundantOperation', `Trying to give item ${item} to its own owner ${this}`).log()
+				//* Item is countable
+				if (item.hasComponents(CCountable)) {
+					const inInventory = this.findByID(item.id)
+					//* This already has an instance of item in its inventory
+					if (inInventory) {
+						//* Item already has an owner
+						if (item.owner)
+							inInventory.count += Math.min(quantity?? item.count, item.count)
+						//* Item does not have an owner
+						else
+							inInventory.count += quantity?? item.count
+						item.count -= Math.min(quantity?? item.count, item.count)
+					}
+					//* This does not have an instance of item in its inventory
+					else
+						//* Item already has an owner
+						if (item.owner) {
+							const newItem = item.split(Math.min(quantity?? item.count, item.count))
+							this.inventory.push(newItem)
+							newItem.setOwner(this)
+						}
+						//* Item does not have an owner
+						else {
+							this.inventory.push(item)
+							item.setOwner(this)
+								.count = quantity?? item.count
+						}
+				}
+				//* Item is not countable
+				else {
+					this.inventory.push(item)
+					item.setOwner(this)
+				}
+				return this
+			}
+			/**
+			* Takes an item from the object's inventory and returns it, if present, or false.
+			* @param {CompositeObject} item
+			* @param {number} quantity
+			* @this {CompositeObject}
+			* @return {CompositeObject | OperationFail}
+			*/
+			static takeItem(item, quantity=undefined) {
+				if (quantity <= 0)
+					return new OperationFail('takeItem', item, 'valueError', `Trying to take zero or negative quantity of ${item} to ${this}`).log()
+				if (!item.hasComponents(COwnable))
+					return new OperationFail('takeItem', item, 'missingComponent', `Trying to take item ${item}, which is not an OwnableItem, from ${this}`).log()
+				if (!this.findByID(item.id))
+					return new OperationFail('takeItem', item, 'notFound', `Trying to take item ${item}, which is not owned by ${this}`).log()
+				//* Item is countable
+				if (item.hasComponents(CCountable))
+					return item.split(quantity?? item.count)
+				//* Item is not countable
+				else {
+					this.removeItem(item)
+					return item
+				}
+			}
+			/**
+			* Removes the item from the object's inventory and returns it, if present, or false, if not present.
+			* @param {CompositeObject} item
+			* @return {CompositeObject | OperationFail}
+			*/
+			static removeItem(item) {
+				if (!this.findByID(item.id))
+					return new OperationFail('takeItem', item, 'notFound', `Trying to remove item ${item}, which is not owned by ${this}`).log()
+				this.inventory.splice(this.inventory.indexOf(item), 1)
+				if (item.hasComponents(COwnable))
+					item.setOwner(undefined)
+				return item
+			}
+			/**
+			* Finds and returns an item matching the ID from the object's inventory, if present, or false.
+			* @param {number | string} id
+			* @return {CompositeObject | false}
+			*/
+			static findByID(id) {
+				if (typeof(id) === 'number')
+					return this.inventory.find(i => i.id === id)?? false
+				if (typeof(id) === 'string')
+					return this.inventory.find(i => i.identifier === id)?? false
+			}
+			/**
+			* Finds and returns an item matching the input from the object's inventory, if present, or false.
+			* @param {number | string} id
+			* @return {CompositeObject | false}
+			*/
+			static findByMatch(input) {
+				return this.inventory.find(i => i.hasComponents(CMatch) && i.matchAgainst(input))?? false
+			}
+			/**
+			* Sets inventory strings.
+			*
+			* If using the default `look` interaction, it's worth including the `description` in `inventory`, as the interaction uses the `inventory` string rather than `description`.
+			* @param {string} inventory Template string displaying the inventory.
+			* @param {string} list_item String describing each item in the inventory list.
+			*/
+			static setInventoryStrings(inventory, list_item) {
+				this.setString('inventory', inventory)
+				this.setString('list_item', list_item)
+			}
+		}
+		export class COwnable extends Component {
+			static dependencies = [CInteractable]
+			/**
+			* @desc What this object is owned by.
+			* @type {Map<string, any>}
+			*/
+			static owner
+
+			static __postAddition(object) {
+				object.addInteractions(
+					Interaction.get('take'),
+					Interaction.get('drop')
+				)
+			}
+			static __delete(object) {
+				object.owner.removeItem(object)
+			}
+
+			static get owner() {
+				return this.owner
+			}
+
+			static setOwner(newOwner) {
+				this.owner = newOwner
+				return this
+			}
+		}
+		export class CLocation extends Component {
+			/**
+			* @desc The area where the object is located.
+			* @type {AArea}
+			*/
+			static location
+
+			/**
+			* Moves the object to a given area.
+			* @param {AArea} area
+			*/
+			static moveTo(area) {
+				if (this.hasComponents(COwnable) && this.owner instanceof AArea && this.owner === this.location)
+					area.giveItem(this)
+				this.location = area
+				if (this.hasComponents(CInventory))
+					for (const object of this.inventory)
+						if (object.hasComponents(CLocation))
+							object.moveTo(area)
+			}
+		}
+		export class CStats extends Component {
+			/**
+			* @desc Map of stats the object has.
+			* @type {Map<string, Stat>}
+			*/
+			static stats = new Map()
+
+			/**
+			* Register a new stat to the object.
+			* @param {Stat} stat
+			*/
+			static registerStat(stat) {
+				this.stats.set(stat.name, stat)
+				return this
+			}
+			static calculateStat(name, includeEquipment=true) {
+				return this.stats.get(name).calculate()
+			}
+		}
+		export class CEquipmentSlots extends Component {
+			static slots = new Map()
+
+			static addSlot(name) {
+				this.slots.set(name, false)
+				this.slots[name] = false
+				return this
+			}
+			static removeSlot(name) {
+				this.slots.delete(name)
+				delete this.slots[name]
+				return this
+			}
+			static isSlotTaken(name) {
+				return !!this.slots.get(name)
+			}
+			static equipItem(item) {
+				if (!item.hasComponents(CEquippable))
+					return new OperationFail('equipItem', item, 'missingComponent', `Trying to equip '${item}', which is not an CEquippable item, on ${this}`).log()
+				let firstEmptySlot = false
+				let prioritySlot = false
+				for (const slot of item.equippableSlots) {
+					//? Slot not present
+					if (!this.slots.has(slot))
+						continue
+					//? First possible slot found
+					else if (!prioritySlot)
+						prioritySlot = slot
+					//? First empty slot found
+					else if (!this.isSlotTaken(slot))
+						firstEmptySlot = slot
+				}
+				if (!firstEmptySlot)
+					if (!prioritySlot)
+						return new OperationFail('equipItem', item, '', `Trying to equip '${item}', but '${this}' has no usable slots.`).log()
+					else if (this.isSlotTaken(prioritySlot))
+							this.unequipItem(this.slots.get(prioritySlot))
+				this.slots.set(firstEmptySlot || prioritySlot, item)
+				return this
+			}
+			static unequipItem(item) {
+				for (const [slot, equipped] of this.slots.entries())
+					if (equipped === item) {
+						this.slots.set(slot, undefined)
+						return this
+					}
+				return new OperationFail('unequipItem', item, 'notFound', `Trying to equip '${item}', but it was not found or is not equipped.`).log()
+			}
+		}
+		export class CEquippable extends Component {
+			static dependencies = [CDescriptors, COwnable, CStats]
+			static equippableSlots = new Set()
+
+			static __postAddition(object) {
+				object.addInteractions(
+					Interaction.get('equip')
+				)
+			}
+		}
+		//# MARK: Game
+		export class GGame {
+			static #parseFunction
+			static #outputFunction = console.log
+			static player
+			static currentInput
+
+			static get here() { return player.location }
+
+			/**
+			* Set the function to be used as the game's output.
+			* @param {(string: string) => any} fn
+			*/
+			static setOutputFunction(fn) {
+				this.#outputFunction = fn
+			}
+			/**
+			* Set a custom function to be used for parsing.
+			* @param {(input: string) => any} fn
+			*/
+			static setParsingFunction(fn) {
+				this.#parseFunction = fn
+			}
+			static setPlayer(player) {
+				this.player = player
+			}
+			static parse(input) {
+				this.currentInput = input
+				if (this.#parseFunction)
+					this.#parseFunction(input)
+			}
+			static out(string) {
+				this.#outputFunction(string)
+			}
+		}
+		for (const component of [CStrings, CVariables, CInteractable])
+			component.addTo(GGame)
+
+		//! MARK: Defaults
+		export const Defaults = {}
+		for (const component of [CStrings, CVariables, CInteractable])
+			component.addTo(Defaults)
+
+		//# Default Interactions
+		Defaults.addInteractions(
+			new Interaction('inventory',
+				'Check your inventory.',
+				/^((?:(?:take\s+a\s+)?look(?:\s+at)?|inspect|investigate)(?!\s+(?:at|surroundings|around|here|about)))/i,
+				function() { GGame.out(this.$inventory) }
+			),
+			new Interaction('look',
+				'Inspect an object more closely.',
+				/^((?:(?:take\s+a\s+)?look(?:\s+at)?|inspect|investigate)(?!\s+(?:at|surroundings|around|here|about)))/i,
+				function() { GGame.out(this.$description) }
+			),
+			new Interaction('take',
+				'Take an item into your inventory.',
+				/^((?:take|pick\s+up))/i,
+				function(quantity=undefined) { GGame.player.giveItem(this, quantity) }
+			),
+			new Interaction('drop',
+				'Drop an item from your inventory.',
+				/^((?:take|pick\s+up))/i,
+				function(quantity=undefined) { GGame.player.takeItem(this, quantity).moveTo(GGame.here) }
+			),
+			new Interaction('equip',
+				'Equip an item from your inventory.',
+				/^((?<!un)equip)/i,
+				function(slot=undefined) {
+					
+				}
+			),
+		)
+		Defaults.setStrings(
+		)
+		//# Default Synergies
+		Synergy.register([CStrings, CCountable], function() { this.registerPlaceholder('count', (object) => `${object.count}`) })
+		Synergy.register([CStrings, CLocation], function() { this.registerPlaceholder('location', (object) => object.area.$name) })
+		Synergy.register([CDescriptors, CInteractable], function() { this.addInteraction(Interaction.get('look')) })
+		Synergy.register([CInventory, CStrings], function() {
+			this.setString('inventory', `$description Searching it, you find $list.`)
+			this.registerShorthand('inventory')
+			this.setString('list_item', `$name`)
+			this.registerShorthand('list_item')
+			this.registerPlaceholder('list', function(object) { return arrayToList(object.inventory.map(i => i.parseString(object.parseString('$list_item', false)))) || 'nothing' })
+		})
+		Synergy.register([CStrings, CDescriptors], function() { this.setDescriptors('an', 'object', 'An item with unset descriptors.') })
+
+		//! MARK: Helper functions
+		/**
+		* @param {string[]} array
+		*/
+		export function arrayToList(array) {
+			return array.join(", ").replace(/, (.*)$/, " and $1")
+		}
+		export function capitalize(string, all=false) {
+			const pairs = Array.from(string.match(/\b[\w-]+\b/g))
+				.map(e => [e, e[0].toUpperCase() + e.slice(1)])
+			for (const [find, replace] of pairs) {
+				string = string.replace(new RegExp(`\\b${find}\\b`), replace)
+				if (!all)
+					return string
+			}
+			return string
+		}
+
+		// const p = new CompositeObject({ identifier: 'charredpebble', components: [CDescriptors, CCountable, CInteractable, COwnable] })
+		// 	.setDescriptors('a', 'charred pebble', 'A smooth, rounded pebble, charred and blackened with layers of soot that now cling to it.')
+		// const o = new CompositeObject({ identifier: 'orb', components: [CDescriptors, CInteractable, COwnable] })
+		// 	.setDescriptors('the', 'Orb', 'An orb that compels you to ponder it.')
+		// const e1 = new CompositeObject({ identifier: 'entity1', components: [CDescriptors, CInventory, CInteractable] })
+		// 	.setDescriptors('a', 'you', 'A tall, handsome kitsune.', { pronoun: 'he' })
+		// const e2 = new CompositeObject({ identifier: 'entity2', components: [CInventory] })
+		// e1.giveItem(p.clone(), 10)
+		// e1.giveItem(o.clone(), 1)
+		// GGame.setPlayer(e1)
+
+		// const c = new CompositeObject({ identifier: 'chest', components: [CDescriptors, CInventory] })
+		// 	.setDescriptors('a', 'chest', 'A worn wooden container, held together with iron studs.')
+
+		// const a = new AArea('forest', {
+		// 	description: 'A dark, gloomy forest, with dry, gnarled trees with no leaves',
+		// 	introduction: 'You enter a dark, gloomy forest.',
+		// 	name: 'Dark Forest',
+		// })
+	</script>
+	<script type="inline-module">
+		import { CVariables, CInventory, COwnable, CCountable, CStats, Stat, CInteractable, GameEvent, CDescriptors, CStrings }
+			from "#raspg"
+		import { GGame, Interaction, CompositeObject }
+			from "#raspg"
+		import { Steptext }
+			from "#steptext"
+
+		const main = document.querySelector('main')
+		const title = document.getElementById('title')
+		const messages = document.getElementById('messages')
+		const logs = document.getElementById('logs')
+		const input = document.getElementById('input')
+		const player = new CompositeObject({identifier: 'player', components: [CVariables, CInventory, CStats, CInteractable]})
+		const caught = document.getElementById('caught')
+		const depth = document.getElementById('depth')
+		const power = document.getElementById('power')
+		const follower = document.getElementById('follower')
+
+		//# Fishing stuff
+		class Fish extends CompositeObject {
+			static all = []
+			depth
+			isFish = true
+
+			constructor(article, name, plural, minDepth, description) {
+				super({identifier: name.replace(/\s/g, ''), components: [COwnable, CCountable, CDescriptors]})
+				this.depth = minDepth
+				this.setDescriptors(article, name, description, {plural: plural})
+				this.registerPlaceholder('name', (object) => {
+					return `${object.isNew? '<span class="invert">NEW</span> ' : ''}${object.$name}`
+				})
+				Fish.all.push(this)
+			}
+
+			static getRandom(depth=1) {
+				if (depth === 0)
+					depth = 1
+				const chances = []
+				const candidates = []
+				const pickArray = [chances, candidates]
+				for (const fish of this.all) {
+					const distance = Math.abs(depth - fish.depth) || 1
+					chances.push(Math.max(0, -(1/(200 + depth*1.5)) * Math.pow(distance, 1.5) + 10))
+					candidates.push(fish)
+				}
+				// const chanceTotal = chances.reduce((prv, cur) => prv + cur, 0)
+				// for (const i in chances)
+				// 	chances[i] /= chanceTotal
+				return PickOne(pickArray)
+			}
+		}
+		class Discovery extends CompositeObject {
+			static all = []
+			depth
+			fn
+			maxTimes = 1
+			timesFound = 0
+			addToInventory
+			chance
+			needs
+
+			/**
+			* @param {number} depth
+			* @param {(this: Discovery) => void} fn
+			* @param {{variance: number, maxTimes: boolean, addToInventory: boolean, chance: number, needs: (this: Discovery) => boolean}} props
+			*/
+			constructor(name, description, depth, fn, props={variance: 20, maxTimes: 1, addToInventory: true, chance: 1, needs: undefined}) {
+				super({components: [CStrings, CDescriptors, COwnable], identifier: name})
+				this.setDescriptors('', name, description)
+				this.depth = depth + Math.round(Math.random() * (props.variance?? 50) - (props.variance?? 50)/2)
+				this.fn = fn
+				if (props.maxTimes)
+					this.maxTimes = props.maxTimes
+				if (props.addToInventory?? true)
+					this.addToInventory = props.addToInventory?? true
+				if (props.chance)
+					this.chance = props.chance
+				Discovery.all.push(this)
+			}
+
+			/** @type {Array<Discovery>} */
+			static get eligible() {
+				const eligible = this.all.filter(d =>
+					(d.maxTimes > d.timesFound)
+					&& (player.getVar('depth') >= d.depth)
+					&& (d.needs? d.needs() : true)
+					&& (d.chance? ((1-d.chance) < Math.random()) : true)
+				)
+				shuffleArray(eligible)
+				return eligible
+			}
+
+			find() {
+				this.fn.apply(this)
+				this.timesFound++
+				if (this.addToInventory)
+					player.giveItem(this)
+			}
+		}
+
+		//# Export variables to window context
+		window.player = player
+		window.Interaction = Interaction
+		window.Fish = Fish
+		window.Discovery = Discovery
+		window.Steptext = Steptext
+		window.GameEvent = GameEvent
+
+		//# Object instances
+		new Stat('power', {value: 1})
+		//? Fishes
+		new Fish('a', 'sunlight zone fish', 'sunlight zone fishes', 0, 'A fish found in the sunlight zone.')
+		new Fish('a', 'twilight zone fish', 'twilight zone fishes', 150, 'A fish found in the twilight zone.')
+		new Fish('a', 'midnight zone fish', 'midnight zone fishes', 400, 'A fish found in the midnight zone.')
+		new Fish('an', 'abyss zone fish', 'abyss zone fishes', 600, 'A fish found in the abyss zone.')
+		new Fish('an', 'eldritch fish', 'eldritch fishes', 1200, 'A fish found at incredible depths.')
+		// new Fish('a', 'striped bass', 0, 50, 'A powerful predator with distinctive black stripes, known for its aggressive feeding habits.')
+		// new Fish('a', 'tuna', 20, 50, 'Large, powerful fish with a streamlined body, often sought after for its meat.')
+		//? Discoveries
+		//* - Story items and singular treasures
+		new Discovery('sample container', `A reinforced metal container fitted with buoyancy devices.`, 10, function() {
+			const containerInteraction = new Interaction('container', 'Investigate the metal container.', 'container', (self) => {
+				const quantity = 16 + Math.round(Math.random() * 8 - 4)
+				self.alterVar('caught', (val) => val += quantity)
+				GameEvent.trigger('CAUGHT')
+				GGame.out(`You check the container you found. After prying it open, you find it contains an assortment of fishes. You note that each is tagged with a plastic tag containing its species, size and weight measurements, and what must be codes.\n\nThe discovery makes you shiver.`)
+				player.removeInteraction(Interaction.get('container'))
+			}, {register: false})
+			Interaction.register(containerInteraction)
+			player.addInteraction(containerInteraction)
+
+			GGame.out(`You find a sturdy, heavily reinforced **container** near the surface, slowly floating upwards.\n\nThe container seems to be fitted with buoyancy devices...\nPresumably for recovery in case of the loss of a vessel.\n\nYou note the discovery into your **journal**.`)
+			player.addInteraction(Interaction.get('journal'))
+		}, { variance: 5 })
+		new Discovery('submarine lights', 'Lights salvaged from a submarine wreck.', 50, function() {
+			GGame.out(`Your sensors detect a metallic echo. Investigating, you find what looks to be a chunk of a wrecked submarine. It seems quite badly damaged, but you manage to salvage its <b>lights</b>.\n\nThe discovery makes you shiver.`)
+			player.addInteraction('lights')
+		})
+		//* - Oddities and easter eggs
+		new Discovery('livingwater', '', 500, function() {
+			GGame.out(`You feel something bump against your hull. When you turn to look, you see nothing there, but your sensors report something.\n\nYou can't shake the feeling that you're staring right at it, and it is staring back.\n\nThe sensation makes you shiver.`)
+		}, { addToInventory: false, variance: 200, maxTimes: Infinity, chance: 0.1 })
+		new Discovery('creaking', '', 200, function() {
+			GGame.out(`You hear the creaking and moaning of your hull, as it flexes and readjusts under the mounting **pressure** of the water above.\n\nThe sounds make you shiver.`)
+			player.addInteraction('pressure')
+			player.setVar('pressure', 'Readings are elevated, and fluctuating slightly.')
+			const handler = () => {
+				if (player.alterVar('turnsToResetPressure', val => val-1) === 0)
+					ResetPressure()
+			}
+			GameEvent.get('TURN').listen(handler)
+
+			this.depth = 200 + Math.round(this.depth/200) * 200 + Math.round(Math.random()*98 - 49)
+			function ResetPressure() {
+				player.resetVar('pressure')
+				player.resetVar('turnsToResetPressure')
+				GGame.out(`Your hull stops creaking and moaning, having adjusted to the **pressure**.`)
+				GameEvent.get('TURN').listeners.delete(handler)
+			}
+		}, { addToInventory: false, variance: 0, maxTimes: Infinity })
+		new Discovery('echoes', '', 600, function() {
+			GGame.out(`You hear something in the deep that sounds like a distant whimper, out of sensor range.\n\nThe sound makes you shiver.`)
+			this.depth += 100 + Math.round(Math.random()*100 - 50)
+		}, { addToInventory: false, variance: 0, chance: 0.2, maxTimes: Infinity })
+		new Discovery('stars', '', 1000, function() {
+			Steptext.lock = true
+			// Steptext.interval = 32
+			GGame.out(`As your hull creaks crisply, your sensors start reporting odd readings.`)
+			GGame.out(`You look out, seeing tiny dots of light start to appear in your peripheral vision, disappearing as you turn to look.`)
+			GGame.out(`Your core starts aching, your mind churning uncomfortably, as if the pressure pressing over your hull is now getting through.`)
+			GGame.out(`You watch as more and more appear, now visible in the center of your vision: shimmering points of light, lining the dark abyss surrounding you.`)
+			GGame.out(`Your core races and hums, all systems bracing; sensors keenly focused, but readings still nonsensical.`)
+			this.depth += 100 + Math.round(Math.random()*100 - 50)
+		}, { addToInventory: false, variance: 0, maxTimes: Infinity })
+		new Discovery('timestutter', '', 600, async function() {
+			Steptext.lock = true
+			const hallucinations = [
+				`<error>a</error>You caught:...`,
+				`<error>a</error>You caught: nothing...`,
+				`<error>a</error>You caught: yourself...`,
+				`<error>a</error>You hear the...`,
+				`<error>a</error>You hear the creaking and...`,
+				`<error>a</error>You hear something in the dee...`,
+				`<error>a</error>You feel something bum...`,
+				`<error>a</error>You feel as though you're bei...`,
+				`<error>a</error>You feel it seeping into your...`,
+				`<error>a</error>You are too deep...`,
+				`<error>a</error>You are going to...`,
+				`<error>a</error>You can't shake the fee...`,
+				`<error>a</error>You can't help but...`,
+				`<error>a</error>Come closer...`,
+				`<error>a</error>Come deeper...`,
+				`<error>a</error>You must go deeper...`,
+				`<error>a</error>You must come closer...`,
+			]
+			for (let i=0; i < 3; i++) {
+				// debugger
+				console.log('Hallucination '+i)
+				const hallucination = PickOne(hallucinations)
+				if (i === 0)
+					GGame.out(hallucination)
+				else
+					Steptext.queue = Steptext.queue.replace(/^(.*?)(<\/div>)/, `${hallucination}$2`)
+				await new Promise(r => setTimeout(r, (hallucination.length-16) * Steptext.interval))
+				Steptext.element.lastElementChild.innerHTML = Steptext.element.lastElementChild.innerHTML.replace(/(<\/span>)(.*)/, `$1`)
+			}
+			Steptext.queue = Steptext.queue.replace(/^(.*?)(<\/div>)/, '$2')
+			this.chance = player.getVar('depth')/10000 * 2
+		}, { addToInventory: false, variance: 0, maxTimes: Infinity, chance: 0.1 })
+		new Discovery('hotwater', '', 200, function() {
+			GGame.out(`You hear the hull creak intermittently as it heats up, the **temperature** gauge increasing fast. Sensor reports odd readings all around.\n\nThe heat makes you sweat.`)
+			player.addInteraction('temperature')
+			player.setVar('temperature', 'It reads abnormally high.')
+			const handler = () => {
+				if (player.alterVar('turnsToResetTemperature', val => val-1) === 0)
+					ResetTemperature()
+			}
+			document.body.parentElement.classList.add('hotwater')
+			GameEvent.get('TURN').listen(handler)
+			function ResetTemperature() {
+				document.body.parentElement.classList.remove('hotwater')
+				player.resetVar('temperature')
+				player.resetVar('turnsToResetTemperature')
+				GGame.out(`You hear the hull creak a few more times, as the **temperature** gauge returns to frigid temperatures.`)
+				GameEvent.get('TURN').unlisten(handler)
+			}
+		}, { addToInventory: false, variance: 0, maxTimes: Infinity })
+		new Discovery('lightsout', '', 450, function() {
+			setTimeout(() => document.body.classList.remove('lights'), (65+10)*Steptext.interval)
+			player.setVar('lightsWork', false)
+			player.setVar('lights', false)
+			player.setVar('turnsToResetLights', Math.round(Math.random() * 10 + 10))
+			GGame.out(`You hear the humming of the lights sharply increase, and then a _"thunk"_. Your **lights** have malfunctioned.${this.timesFound == 0? '\n\nIn a panicked search, you manage to find an emergency **flashlight** module.' : ''}`)
+			player.addInteraction('flashlight')
+			const handler = () => {
+				if (player.alterVar('turnsToResetLights', val => val-1) === 0)
+					ResetLights()
+			}
+			GameEvent.get('TURN').listen(handler)
+			function ResetLights() {
+				player.resetVar('lightsWork')
+				GGame.out(`You have managed to repair your lights. They are now operable.`)
+				GameEvent.get('TURN').unlisten(handler)
+			}
+		}, { addToInventory: false, variance: 0, chance: 0.5, maxTimes: Infinity })
+		new Discovery('1238', '', 250, function() {
+			GGame.out(`Your sensors report readings indicating an approximately ███-meter tunnel opening in the seabed nearby. You feel it might be worth it to **investigate**.`)
+			const investigate = new Interaction('investigate', 'Investigate the large tunnel.', 'investigate', function(self) {
+				if (this.getVar('fishScared') && this.getVar('wallsSeen'))
+					GGame.out(`You find nothing else of note.`)
+				else if (self.getVar('lights'))
+					if (!this.getVar('fishScared')) {
+						if (self.interactions.investigateCount === 0) {
+							GGame.out(`You approach the massive opening. Inside, you can only catch glimpses of them, as they quickly swim away from your **lights**, but there seem to be hundreds, perhaps thousands, of fish inside, each almost the size of a human.\n\nTheir movements make you shiver.`)
+						} else {
+							GGame.out(`You turn on your lights, revealing hundreds, perhaps thousands of fish inside. As you look at them, a good portion turn to face you. Each looks to be approximately 3.2 meters long.\n\nThe sight makes you shiver.`)
+							this.setVar('fishScared', true)
+						}
+					} else {
+						GGame.out(`You investigate further. The entire wall of the tunnel looks as though the rock has been chiped and chewed off.\n\nThe discovery makes you shiver.`)
+						this.setVar('wallsSeen', true)
+					}
+				else {
+					if (self.interactions.investigateCount === 0)
+						GGame.out(`You approach the massive opening. You can barely see with your **lights** off, but you do spot a great number of what look like eye reflections, and a myriad more of soft dots of light, presumably reflecting off of scales.`)
+					else if (!this.getVar('fishScared'))
+						GGame.out(`You strain your eyes continuing to observe the mesmerizing display. More pairs of eyes seem to be looking your way each time you look.`)
+					else
+						GGame.out(`You see no movement or anything else of note.`)
+				}
+				GameEvent.trigger('TURN')
+			}, {components: [CVariables]})
+			investigate.registerVariable('fishScared', false)
+			investigate.registerVariable('wallsSeen', false)
+			player.addInteraction(investigate)
+			const handler = () => {
+				player.removeInteraction(investigate)
+				GameEvent.get('CAUGHT').unlisten(handler)
+			}
+			GameEvent.get('CAUGHT').listen(handler)
+		}, { addToInventory: false, variance: 100 })
+		//? Events
+		new GameEvent('TURN')
+		new GameEvent('POWER', () => power.textContent = player.stats.power.calculate())
+		new GameEvent('CAUGHT', () => {
+			console.log('EVENT - CAUGHT')
+			caught.textContent = ''+player.getVar('caught')
+			GameEvent.trigger('DEPTH')
+		})
+		new GameEvent('DEPTH', () => {
+			console.log('EVENT - DEPTH')
+			let now = Date.now()
+			const start = player.getVar('depth')
+			const end = player.alterVar('depth', (val) => val += player.getVar('caught')/5)
+			const interval = setInterval(() => {
+				depth.textContent = '' + easeInOutSine(Date.now() - now, start, end-start, 1000).toFixed(1)
+				document.body.style.setProperty('--depth', easeInOutSine(Date.now() - now, start, end-start, 1000).toFixed(1))
+			}, 32)
+			setTimeout(() => clearInterval(interval), 1000)
+			const discovery = PickOne(Discovery.eligible)
+			if (discovery)
+				discovery.find()
+		})
+		//? Interactions
+		new Interaction('fish', 'Try to catch fish.', 'fish', function(self) {
+			const quantity = player.getVar('canCatch')? Math.round(
+				5
+				//* Fishing power
+				+ self.calculateStat('power')
+				//* Random variation. -3...3, -2...4, -1...5, etc.
+				+ (Math.random() * (6 + self.calculateStat('power')) - 3)
+			) : 0
+			//* Give fish quantity
+			self.alterVar('caught', (val) => val + quantity)
+
+			//* Pull random fish
+			const fishes = new CompositeObject({register: false, components: [CStrings, CInventory]})
+			for(let i=0; i<quantity; i++)
+				fishes.giveItem(Fish.getRandom(player.getVar('depth')).clone(), 1)
+
+			//* Mark new
+			for (const fish of fishes.inventory)
+				if (!player.findByID(fish.id))
+					fish.isNew = true
+				else
+					fish.isNew = false
+
+			//* Output and event trigger
+			GameEvent.trigger('CAUGHT', self, quantity)
+			if (quantity == 0)
+				GGame.out(`You caught:\n${fishes.inventory.map(f => ` - ${f.parseString('$name')}`).join('\n')}.`)
+			else
+				GGame.out(`You caught:\n${fishes.inventory.map(f => ` - ${f.parseString('$name')}`).join('\n')}.`)
+
+			//* Push random fish to player inventory
+			for (const fish of fishes.inventory.slice()) {
+				player.giveItem(fishes.removeItem(fish), fish.count)
+			}
+
+			//* Unmark new
+			for (const fish of player.inventory) {
+				fish.isNew = false
+			}
+			GameEvent.trigger('TURN')
+		})
+		new Interaction('wait', 'Wait adrift.', 'wait', function(self) {
+			GGame.out(`You wait a while, adrift in the currents.`)
+			GameEvent.trigger('TURN')
+		})
+		new Interaction('lights', 'Turn the lights on.', /(?:toggle\s*)?lights?/i, function(self) {
+			if (player.getVar('lightsWork')) {
+				setTimeout(() => document.body.classList.toggle('lights'), 20)
+				GGame.out(`You turn the lights ${self.alterVar('lights', (val) => !val)? 'on' : 'off'}.`)
+				GameEvent.trigger('TURN')
+			} else
+				GGame.out(`Your lights are currently inoperable.`)
+		})
+		new Interaction('journal', 'Check the current haul.', /inventory|catch(?:es)?\s*log|collection|journal|logbook|fishdex|report/i, function(self) {
+			GGame.out(self.parseString('$inventory'))
+		})
+		new Interaction('pressure', 'Check the pressure gauge.', /(?:check\s*)?pressure(?:\s*gauge)?|gauge/i, function(self) {
+			GGame.out(`You check your pressure gauge. ${self.getVar('pressure')}`)
+			GameEvent.trigger('TURN')
+		})
+		new Interaction('temperature', 'Check the water temperature gauge.', /(?:check\s*)?temp(?:erature)?(?:\s*gauge)?|gauge/i, function(self) {
+			GGame.out(`You check your temperature gauge. ${self.getVar('temperature')}`)
+			GameEvent.trigger('TURN')
+		})
+		new Interaction('flashlight', 'Turn on the emergency flashlight.', /emergency\s*(?:flash)?lights?|flashlights?/i, function(self) {
+			if (player.getVar('lightsWork'))
+				GGame.out(`You have no need for your flashlight currently.`)
+			else {
+				setTimeout(() => document.body.classList.toggle('flashlight'), 20)
+				GGame.out(`You turn your flashlight ${self.alterVar('flashlight', (val) => !val)? 'on' : 'off'}.`)
+				GameEvent.trigger('TURN')
+			}
+		})
+		new Interaction('help', 'See a list of available commands.', /help|commands?/i, function(self) {
+			GGame.out(`You assess your current situation.`)
+			CreateLog('help', Array.from(player.interactions).map(i => `<b>${i.name}</b> - ${i.description}`).join('<br>'))
+			document.body.classList.add('log')
+		})
+
+		//# Player setup
+		player.registerPlaceholder('fishes', (self) => {
+			if (self.inventory.filter(i => i.isFish).length === 0)
+				return 'So far, you have caught nothing.'
+			return 'So far, you have caught:\n'+self.inventory.
+				filter(i => i.isFish)
+				.map(f => `- ${f.parseString('$Name')} - ${f.$description}`)
+				.join('\n')
+		})
+		player.registerPlaceholder('discoveries', (self) => {
+			if (self.inventory.filter(d => d.maxTimes).length === 0)
+				return ''
+			return '\n\nYou have also found:\n'+self.inventory.
+				filter(d => d.maxTimes)
+				.map(d => `- ${d.parseString('$Singular')} - ${d.$description}`)
+				.join('\n')
+		})
+		player.addInteraction('help')
+		player.addInteraction('wait')
+		player.addInteraction('fish')
+		player.setInventoryStrings('$fishes $discoveries')
+		player.registerStat(new Stat('power'))
+		player.registerVariable('canCatch', true)
+		player.registerVariable('caught', 0)
+		player.registerVariable('depth', 0)
+		player.registerVariable('lightsWork', true)
+		player.registerVariable('turnsToResetLights', 5)
+		player.registerVariable('lights', false)
+		player.registerVariable('flashlight', false)
+		player.registerVariable('turnsToResetPressure', 5)
+		player.registerVariable('pressure', 'It reads nominal.')
+		player.registerVariable('turnsToResetTemperature', 5)
+		player.registerVariable('temperature', 'It reads nominal.')
+
+		//# Framework setup
+		Steptext.interval = 32
+		Steptext.element = messages
+		Steptext.step()
+		GGame.setPlayer(player)
+		GGame.setParsingFunction((inp) => {
+			player.matchInteraction(inp)
+			GGame.currentInput = ''
+		})
+		GGame.setOutputFunction((string) => {
+			//* Fade all but the latest 3 messages
+			main.querySelectorAll('.msg').forEach((e, i, p) => {
+				if (i > p.length - 3)
+					return
+				e.classList.add('fade')
+			})
+			// const span = document.createElement('span')
+			// span.className = 'msg in'
+			// setTimeout(() => span.classList.remove('in'), 300)
+			// console.log(string)
+			// span.innerHTML = string.replace(/\n/g, '<br>')
+			// console.log(span.innerHTML)
+			// input.before(span)
+			let inputText = ''
+			if (GGame.currentInput)
+				inputText = `<span class="input">${GGame.currentInput}</span>`
+			GGame.currentInput = undefined
+			Steptext.queue += `<div class="msg in">${inputText}${string}</div>`
+			setTimeout(() => messages.lastElementChild.classList.remove('in'), 300)
+		})
+
+		//# Debugging
+		// player.findInteraction('fish')
+		// Interaction.get('lights').fn()
+		// setInterval(() => Interaction.get('lights').fn(), 2000)
+
+		//# Input registering and other setup
+		input.addEventListener('keypress', function(e) {
+			if (e.key === 'Enter') {
+				if (!Steptext.lock)
+					Steptext.skip()
+				GGame.parse(input.value.trim().toLowerCase())
+				input.value = ''
+				input.setAttribute('disabled', '')
+				InputWait()
+				ScrollToBottom()
+				function InputWait() {
+					if (Steptext.queue.length)
+						return requestAnimationFrame(InputWait)
+					input.removeAttribute('disabled')
+					input.focus()
+				}
+			}
+		})
+		//? Observer for new elements for sound effects?
+		new MutationObserver((mutationsList) => {
+			const notify = ['ERROR']
+			for (const m of mutationsList) {
+				const notifications = Array.from(m.addedNodes).filter(e => notify.includes(e.tagName))
+				if (notifications.length)
+					console.log('MutationObserver notification: ', notifications)
+			}
+		}).observe(messages, { childList: true, subtree: true })
+		//? Follower
+		main.addEventListener('mousemove', throttle((event) => {
+			follower.style.setProperty('--x', `${event.pageX}px`)
+			follower.style.setProperty('--y', `${event.pageY}px`)
+		}, 16))
+		document.addEventListener('mouseleave', () => follower.style.setProperty('--on', 0))
+		document.addEventListener('mouseenter', () => follower.style.setProperty('--on', 1))
+		ScrollToBottom()
+		ModulateBeam()
+		//? Scroll top
+		main.addEventListener('scroll', (e) => {
+			main.style.setProperty('--scroll', main.scrollTop)
+			title.style.opacity = Math.min(1, 1 - (main.scrollTop/100-1)/2)
+			document.querySelectorAll('.particles').forEach(p => p.style.setProperty('--o', Math.min(1, (main.scrollTop / 100 - 5) / 50)))
+		})
+
+		//# Helper functions
+		function PickOne(array) {
+			if (array.length === 2 && array.every(e => e instanceof Array) && array[0].every(e => typeof(e) === 'number') && array[0].length === array[1].length) {
+				const total = array[0].reduce((prv, cur) => prv + cur, 0)
+				const picked = Math.random() * total
+				let accum = 0
+				let ret
+				array[0].forEach((e, i) => {
+					if (ret) return
+					accum += e
+					if (accum > picked)
+						return ret = array[1][i]
+				})
+				return ret
+			}
+			return array.at(Math.floor(Math.random() * array.length))
+		}
+		function shuffleArray(array) {
+			for (let i = array.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[array[i], array[j]] = [array[j], array[i]];
+			}
+		}
+		function easeInOutSine(elapsed, initialValue, amountOfChange, duration) {
+			return -amountOfChange / 2 * (Math.cos(Math.PI * elapsed / duration) - 1) + initialValue;
+		}
+		function throttle(mainFunction, delay) {
+			let timerFlag = null; // Variable to keep track of the timer
+
+			// Returning a throttled version 
+			return (...args) => {
+				if (timerFlag === null) { // If there is no timer currently running
+					mainFunction(...args); // Execute the main function 
+					timerFlag = setTimeout(() => { // Set a timer to clear the timerFlag after the specified delay
+						timerFlag = null; // Clear the timerFlag to allow the main function to be executed again
+					}, delay)
+				}
+			}
+		}
+		function ScrollToBottom() {
+			if (Steptext.queue.length !== 0)
+				main.scrollTo({top: main.scrollHeight, behavior: 'instant'})
+			requestAnimationFrame(ScrollToBottom)
+		}
+		function ModulateBeam() {
+			const SPAN = 36
+			const INTERVAL = 1000
+			document.getElementById('lights').style.setProperty('--beam-width', `${Math.round(Math.random()*SPAN-SPAN/2)}ch`)
+			setTimeout(ModulateBeam, Math.random() * 500 + INTERVAL)
+		}
+		function Follower(event) {
+			follower.style.setProperty('--x', `${event.pageX}px`)
+			follower.style.setProperty('--y', `${event.pageY}px`)
+		}
+		function CreateLog(title, content) {
+			logs.innerHTML = ''
+			const div = document.createElement('div')
+			div.classList.add('msg')
+			div.innerHTML = `<span class="input">${title}</span>${content}`
+			const close = document.createElement('div')
+			close.id = 'close'
+			close.textContent = 'x'
+			div.append(close)
+			close.addEventListener('click', () => {
+				document.body.classList.remove('log')
+				setTimeout(() => logs.innerHTML = '', 1000)
+			})
+			logs.append(div)
+		}
+	</script>
+	<style>
+		@-webkit-keyframes fade {
+			0% {
+				opacity: 1;
+			}
+			100% {
+				opacity: 0;
+			}
+		}
+		@keyframes fade {
+			0% {
+				opacity: 1;
+			}
+			100% {
+				opacity: 0;
+			}
+		}
+		@-webkit-keyframes search {
+			0% {
+				transform: rotate(60deg);
+			}
+			100% {
+				transform: rotate(-60deg);
+			}
+		}
+		@keyframes search {
+			0% {
+				transform: rotate(60deg);
+			}
+			100% {
+				transform: rotate(-60deg);
+			}
+		}
+		@-webkit-keyframes flicker {
+			0% {
+				opacity: 1;
+			}
+			67% {
+				opacity: 1;
+			}
+			67.5% {
+				opacity: 0;
+			}
+			67.9% {
+				opacity: 1;
+			}
+			68% {
+				opacity: 0;
+			}
+			70% {
+				opacity: 1;
+			}
+			95% {
+				opacity: 1;
+			}
+			96% {
+				opacity: 0;
+			}
+			96.9% {
+				opacity: 1;
+			}
+			97% {
+				opacity: 0;
+			}
+			100% {
+				opacity: 1;
+			}
+		}
+		@keyframes flicker {
+			0% {
+				opacity: 1;
+			}
+			67% {
+				opacity: 1;
+			}
+			67.5% {
+				opacity: 0;
+			}
+			67.9% {
+				opacity: 1;
+			}
+			68% {
+				opacity: 0;
+			}
+			70% {
+				opacity: 1;
+			}
+			95% {
+				opacity: 1;
+			}
+			96% {
+				opacity: 0;
+			}
+			96.9% {
+				opacity: 1;
+			}
+			97% {
+				opacity: 0;
+			}
+			100% {
+				opacity: 1;
+			}
+		}
+		@-webkit-keyframes sidetoside {
+			0% {
+				transform: translateX(-5ch);
+			}
+			100% {
+				transform: translateX(5ch);
+			}
+		}
+		@keyframes sidetoside {
+			0% {
+				transform: translateX(-5ch);
+			}
+			100% {
+				transform: translateX(5ch);
+			}
+		}
+		@-webkit-keyframes grain {
+			0%, 100% {
+				transform: translate(0, 0);
+			}
+			10% {
+				transform: translate(-5%, -10%);
+			}
+			20% {
+				transform: translate(-15%, 5%);
+			}
+			30% {
+				transform: translate(7%, -25%);
+			}
+			40% {
+				transform: translate(-5%, 25%);
+			}
+			50% {
+				transform: translate(-15%, 10%);
+			}
+			60% {
+				transform: translate(15%, 0%);
+			}
+			70% {
+				transform: translate(0%, 15%);
+			}
+			80% {
+				transform: translate(3%, 35%);
+			}
+			90% {
+				transform: translate(-10%, 10%);
+			}
+		}
+		@keyframes grain {
+			0%, 100% {
+				transform: translate(0, 0);
+			}
+			10% {
+				transform: translate(-5%, -10%);
+			}
+			20% {
+				transform: translate(-15%, 5%);
+			}
+			30% {
+				transform: translate(7%, -25%);
+			}
+			40% {
+				transform: translate(-5%, 25%);
+			}
+			50% {
+				transform: translate(-15%, 10%);
+			}
+			60% {
+				transform: translate(15%, 0%);
+			}
+			70% {
+				transform: translate(0%, 15%);
+			}
+			80% {
+				transform: translate(3%, 35%);
+			}
+			90% {
+				transform: translate(-10%, 10%);
+			}
+		}
+		body {
+			--depth: 0;
+			--color-dark: #04080e;
+			--color-light: #ffde83;
+			--color-main: var(--color-dark);
+			--color-scnd: var(--color-light);
+			--color-lights: #ffe6a2;
+			margin: 0 auto;
+			padding: 0;
+			overflow: hidden auto;
+			font-family: "VT323", sans-serif;
+			font-size: 1.5rem;
+			background-color: hsl(0deg, 0%, 0%);
+			color: var(--color-main);
+		}
+		
+		main::-webkit-scrollbar, #logs::-webkit-scrollbar {
+			width: 1ch;
+			background-color: var(--color-dark);
+		}
+		main::-webkit-scrollbar-track, #logs::-webkit-scrollbar-track {
+			border-radius: 1ch;
+			background-color: var(--color-dark);
+		}
+		main::-webkit-scrollbar-thumb, #logs::-webkit-scrollbar-thumb {
+			background-color: var(--color-scnd);
+			border-radius: 5px;
+		}
+		main::-webkit-scrollbar-button, #logs::-webkit-scrollbar-button {
+			display: none;
+			background-color: var(--color-scnd);
+			height: 1ch;
+			border-radius: 50%;
+		}
+		
+		body.lights {
+			--color-main: var(--color-light);
+			--color-scnd: var(--color-dark);
+		}
+		body.lights #input {
+			filter: drop-shadow(0 0rem 4rem #fdf0ca);
+			background-color: var(--color-lights);
+			box-shadow: 0 0 0.5ch 0.5ch var(--color-main), inset 0 0 2ch 0ch var(--color-main);
+		}
+		body.lights #stats::before {
+			background-color: var(--color-lights);
+			box-shadow: 0 0 0.5ch 0.5ch var(--color-main), inset 0 0 2ch 0ch var(--color-main);
+		}
+		body.lights #lights {
+			opacity: 1;
+		}
+		body.lights #lights::before {
+			-webkit-animation: flicker 15s ease-in-out infinite;
+			animation: flicker 15s ease-in-out infinite;
+		}
+		body.lights #input, body.lights #stats, body.lights #lights, body.lights .msg, body.lights .invert {
+			transition: all 0.5s cubic-bezier(0.3, 2, 0.3, -1.1);
+		}
+		body.lights #logs {
+			background-color: rgba(255, 222, 131, 0.4);
+			transition: all 0.5s cubic-bezier(0.3, 2, 0.3, -1.1), width 1s ease, opacity 1s ease;
+		}
+		body.lights::-webkit-scrollbar-thumb, body.lights #logs::-webkit-scrollbar-thumb {
+			background-color: var(--color-lights);
+		}
+		
+		body.log #content-wrapper {
+			transform: translateX(-30%);
+		}
+		body.log #logs {
+			width: 25ch;
+			opacity: 1;
+		}
+		
+		#input, #stats, #lights, .msg, .invert {
+			transition: all 0.4s ease-in;
+		}
+		
+		#logs {
+			transition: all 0.4s ease, width 1s ease, opacity 1s ease;
+		}
+		
+		html {
+			position: relative;
+			transition: filter 30s ease;
+			width: 100vw;
+		}
+		html::after {
+			content: "";
+			position: fixed;
+			inset: -200%;
+			background-image: url("./assets/grain.png");
+			-webkit-animation: grain 8s steps(10) infinite;
+			animation: grain 8s steps(10) infinite;
+			mix-blend-mode: multiply;
+			pointer-events: none;
+			z-index: 100;
+			opacity: 0;
+			opacity: 0.3;
+			transition: opacity 30s ease;
+			filter: brightness(1.1);
+		}
+		html.hotwater {
+			filter: sepia(0.9) hue-rotate(-30deg) saturate(2) brightness(1.5) contrast(1.5);
+		}
+		html.hotwater::after {
+			opacity: 0.7;
+		}
+		
+		body.flashlight #follower {
+			--flashlight: 1;
+		}
+		
+		body.lights #follower {
+			--flashlight: 0 !important;
+		}
+		
+		#follower {
+			--flashlight: 0;
+			--on: calc(var(--flashlight) * var(--on));
+			--x: 0px;
+			--y: 0px;
+			position: fixed;
+			height: 0;
+			width: 0;
+			top: 0;
+			left: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			transition: transform 0.2s ease;
+			transform: translate(var(--x), var(--y));
+			z-index: 100;
+			pointer-events: none;
+		}
+		#follower::before {
+			content: "";
+			position: absolute;
+			height: 20ch;
+			width: 20ch;
+			border-radius: 100%;
+			-webkit-backdrop-filter: brightness(calc(var(--flashlight) * var(--on) * 5 + 1)) contrast(calc(var(--flashlight) * var(--on) * -0.03 + 1));
+			backdrop-filter: brightness(calc(var(--flashlight) * var(--on) * 5 + 1)) contrast(calc(var(--flashlight) * var(--on) * -0.03 + 1));
+			-webkit-mask-image: radial-gradient(closest-side, black 0%, rgba(0, 0, 0, 0.78) 14%, rgba(0, 0, 0, 0.92) 21%, rgba(0, 0, 0, 0.92) 23%, rgba(0, 0, 0, 0.77) 38%, rgba(0, 0, 0, 0.9) 48%, rgb(0, 0, 0) 70%, rgba(0, 0, 0, 0.8) 76%, rgba(0, 0, 0, 0.7) 81%, rgba(0, 0, 0, 0.55) 87%, transparent 100%);
+			mask-image: radial-gradient(closest-side, black 0%, rgba(0, 0, 0, 0.78) 14%, rgba(0, 0, 0, 0.92) 21%, rgba(0, 0, 0, 0.92) 23%, rgba(0, 0, 0, 0.77) 38%, rgba(0, 0, 0, 0.9) 48%, rgb(0, 0, 0) 70%, rgba(0, 0, 0, 0.8) 76%, rgba(0, 0, 0, 0.7) 81%, rgba(0, 0, 0, 0.55) 87%, transparent 100%);
+			filter: blur(1px);
+			opacity: calc(var(--flashlight) * var(--on));
+			transition: opacity 0.2s, -webkit-backdrop-filter 0.2s ease;
+			transition: backdrop-filter 0.2s ease, opacity 0.2s;
+			transition: backdrop-filter 0.2s ease, opacity 0.2s, -webkit-backdrop-filter 0.2s ease;
+		}
+		
+		::-moz-selection {
+			color: var(--color-scnd);
+			background-color: var(--color-main);
+		}
+		
+		::selection {
+			color: var(--color-scnd);
+			background-color: var(--color-main);
+		}
+		
+		.invert {
+			color: var(--color-main);
+			border-radius: 0.8ch;
+			padding-inline: 0.6ch;
+			outline: solid 1px currentColor;
+			outline-offset: -3px;
+		}
+		
+		b, .msg .input {
+			font-weight: normal;
+			color: var(--color-scnd);
+			text-shadow: 1px 1px 1px var(--color-main), -1px -1px 1px var(--color-main), 1px -1px 1px var(--color-main), -1px 1px 1px var(--color-main);
+		}
+		
+		.msg .input {
+			font-weight: bold;
+			display: block;
+			text-align: center;
+		}
+		.msg.in {
+			animation: fade 0.2s ease-out reverse;
+		}
+		.msg.fade {
+			-webkit-animation: fade 3s ease-out forwards 1s;
+			animation: fade 3s ease-out forwards 1s;
+		}
+		
+		.particles {
+			--dist: 1;
+			--o: 0;
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			overflow: hidden;
+			background-image: url("./assets/dust.png");
+			background-position-y: calc(var(--scroll) / 50 * -2ch * var(--dist));
+			background-position-x: center;
+			background-size: calc(800px + var(--dist) * 30%);
+			background-repeat: repeat;
+			opacity: calc(0 - var(--dist) * 0.3 + var(--o));
+			filter: blur(calc(3px * var(--dist)));
+			transition: background-position 0.2s ease;
+			pointer-events: none;
+		}
+		
+		error {
+			display: none;
+		}
+		
+		#title, #stats, #content-wrapper {
+			width: 100%;
+			max-width: 50ch;
+			margin-inline: auto;
+		}
+		
+		svg {
+			display: none;
+		}
+		
+		#title {
+			position: absolute;
+			top: 10ch;
+			left: 50%;
+			transform: translateX(-50%);
+			z-index: 1;
+			color: var(--color-dark);
+			text-align: center;
+			font-style: italic;
+			pointer-events: none;
+		}
+		#title :first-child {
+			font-size: 2.5em;
+			font-style: normal;
+			background-color: inherit;
+		}
+		
+		main {
+			--scroll: 0;
+			height: 100vh;
+			width: 100%;
+			box-sizing: border-box;
+			margin-top: -4ch;
+			transition: height 1s ease;
+			margin-inline: auto;
+			overflow: hidden auto;
+			perspective: 10ch;
+			perspective-origin: center calc(var(--depth) + 10ch);
+		}
+		main::before, main::after {
+			content: "";
+			position: absolute;
+			top: 0;
+			left: 0;
+			right: 0;
+			pointer-events: none;
+		}
+		main::before {
+			height: calc(30ch + 5px);
+			background-image: linear-gradient(to bottom, #2fbdff, #2fbdff, #8fdbff, #8fdbff, #ffe18f, #ff6c32 30ch);
+			filter: url(#waves) blur(2px);
+			z-index: -1;
+		}
+		main::after {
+			min-height: 100vh;
+			height: 100%;
+			background-image: linear-gradient(to bottom, #2fbdff, #2fbdff, #8fdbff, #8fdbff, #ffe18f, #ff6c32 30ch, #1cf7c0 30ch, #2ab7cf 35ch, #3c78b1, #295793, #253489 150ch, #000000 500ch, #000 1500ch);
+			z-index: -2;
+		}
+		
+		#content-wrapper, main::after, .particles {
+			height: calc(100vh + var(--depth) * 1ch);
+		}
+		
+		#content-wrapper {
+			min-height: 100vh;
+			box-sizing: border-box;
+			position: relative;
+			display: flex;
+			flex-direction: column;
+			justify-content: flex-end;
+			gap: 1ch;
+			padding-inline: 1ch;
+			padding-block: 30ch 50vh;
+			scroll-behavior: smooth;
+			transition: transform 1s ease;
+		}
+		#content-wrapper > * {
+			width: 100%;
+			margin: 0 auto;
+			box-sizing: border-box;
+		}
+		#content-wrapper > *:first {
+			margin-top: 0;
+		}
+		
+		#stats {
+			width: 100%;
+			height: 4ch;
+			position: -webkit-sticky;
+			position: sticky;
+			top: 0;
+			display: flex;
+			flex-direction: row;
+			justify-content: space-between;
+			padding: 1ch;
+			padding-top: 0.5ch;
+			gap: 0.5ch;
+			color: var(--color-scnd);
+			z-index: 10;
+			transition: color background border 0.5s ease-in;
+			-webkit-user-select: none;
+			-moz-user-select: none;
+			user-select: none;
+			box-sizing: border-box;
+		}
+		#stats::before {
+			content: "";
+			position: absolute;
+			inset: 0;
+			border-radius: 0 0 1ch 1ch;
+			background-color: var(--color-main);
+			z-index: -1;
+			transition: inherit;
+		}
+		
+		#content-wrapper #log-wrapper {
+			height: 0;
+			position: relative;
+			display: flex;
+			align-items: center;
+			perspective: 1ch;
+		}
+		
+		#logs {
+			width: 0;
+			min-height: 2lh;
+			max-height: 40ch;
+			position: absolute;
+			left: 100%;
+			padding: 1ch;
+			box-sizing: border-box;
+			overflow-y: auto;
+			overflow-x: hidden;
+			color: var(--color-scnd);
+			background-color: rgba(26, 41, 69, 0.4);
+			perspective: 5ch;
+			border-radius: 1ch;
+			opacity: 0;
+			transform: rotateY(-0.5deg) translateY(4.5ch) scale(0.8);
+			box-shadow: 0.5ch 0.3ch 1ch var(--color-main);
+		}
+		#logs > * {
+			width: 23ch;
+		}
+		#logs::-webkit-scrollbar {
+			width: 0.8ch;
+		}
+		#logs #close {
+			position: absolute;
+			top: 0;
+			left: 100%;
+			transform: translateX(-150%);
+			cursor: pointer;
+		}
+		
+		#content-wrapper input {
+			position: relative;
+			outline: none;
+			height: 5ch;
+			width: 20ch;
+			margin-top: 1ch;
+			padding: 2.5ch 2.5ch;
+			border: 0;
+			border-radius: 50%;
+			font-family: inherit;
+			font-size: inherit;
+			text-align: center;
+			color: var(--color-scnd);
+			background: var(--color-main);
+			box-shadow: 0 0 0.5ch 0.5ch var(--color-main);
+		}
+		#content-wrapper input::-moz-selection {
+			color: var(--color-main);
+			background-color: var(--color-scnd);
+		}
+		#content-wrapper input::selection {
+			color: var(--color-main);
+			background-color: var(--color-scnd);
+		}
+		
+		#content-wrapper #lights-wrapper {
+			width: 1ch;
+			margin: 0 auto;
+			-webkit-animation: sidetoside 10s ease-in-out infinite alternate;
+			animation: sidetoside 10s ease-in-out infinite alternate;
+			z-index: -1;
+			overflow: visible;
+		}
+		
+		#lights {
+			--beam-width: 0ch;
+			height: 1ch;
+			width: 1ch;
+			position: relative;
+			filter: blur(0.7ch) drop-shadow(0 2ch 3ch var(--color-lights)) drop-shadow(0 13ch 11ch var(--color-lights)) drop-shadow(0 13ch 11ch var(--color-lights));
+			opacity: 0;
+			transform-origin: center -3ch;
+			-webkit-animation: search 10s ease-in-out infinite alternate;
+			animation: search 10s ease-in-out infinite alternate;
+		}
+		#lights::before {
+			position: absolute;
+			content: "";
+			top: 0;
+			bottom: 10vh;
+			left: 50%;
+			transform: translateX(-50%);
+			width: calc(40ch + var(--beam-width));
+			transition: width 1s ease;
+			height: 40vh;
+			flex-shrink: 0;
+			margin-top: -5ch;
+			background-color: var(--color-lights);
+			-webkit-clip-path: polygon(50% 0, 100% 70%, 78% 90%, 50% 100%, 22% 90%, 0 70%);
+			clip-path: polygon(50% 0, 100% 70%, 78% 90%, 50% 100%, 22% 90%, 0 70%);
+			-webkit-mask-image: radial-gradient(circle at top center, white, rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.1) 50%, transparent 70%);
+			mask-image: radial-gradient(circle at top center, white, rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.1) 50%, transparent 70%);
+		}
+		/*# sourceMappingURL=fish.css.map */
+	</style>
+</head>
+<body class="">
+	<div id="stats">
+		<div>
+			<span>Fish: </span>
+			<span id="caught">0</span>
+		</div>
+		<div>
+			<span>Depth: </span>
+			<span id="depth">0</span>
+		</div>
+		<div>
+			<span>Power: </span>
+			<span id="power">1</span>
+		</div>
+	</div>
+	<div id="title">
+		<div>Fathomless</div>
+		<div>a tiny fishing game</div>
+		<div>by Rasutei</div>
+	</div>
+	<main>
+		<div id="content-wrapper">
+			<div id="messages"></div>
+			<div id="log-wrapper">
+				<div id="logs">
+				</div>
+			</div>
+			<input id="input" type="text" value="fish" autofocus="true" autocomplete="off">
+			<div id="lights-wrapper">
+				<div id="lights"></div>
+			</div>
+		</div>
+		<div class="particles" style="--dist: 1"></div>
+		<div class="particles" style="--dist: 2"></div>
+		<div class="particles" style="--dist: -1"></div>
+		<div class="particles" style="--dist: -2"></div>
+	</main>
+	<div id="follower"></div>
+	<svg>
+		<filter id="waves">
+			<feTurbulence id="turbulenceh1" type="turbulence" numOctaves="10" seed="4" result="NOISE"></feTurbulence>
+			<feGaussianBlur stdDeviation="1" result="BLUR" in="DISPLACEMENT"></feGaussianBlur>
+			<feDisplacementMap in="SourceGraphic" result="DISPLACEMENT" in2="BLUR" scale="5"></feDisplacementMap>
+			<animate xlink:href="#turbulenceh1" attributeName="baseFrequency" dur="120s" keyTimes="0;0.5;1" values=".02 .04; .04 .08; .02 .04" repeatCount="indefinite"></animate>
+		</filter>
+		<filter id="dither">
+			<feTurbulence baseFrequency="1" numOctaves="5" type="fractalNoise" result="NOISE"></feTurbulence>
+			<feDisplacementMap scale="4" result="OUT" in="SourceGraphic" in2="NOISE"></feDisplacementMap>
+		</filter>
+	</svg>
+</body>
+</html>
