@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Fathomless</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+	<script src="./code/steptext.js" type="module"></script>
+	<script src="./code/raspg.js" type="module"></script>
+	<script src="./code/howler.min.js" type="module"></script>
+	<script src="fish.js" type="module"></script>
+	<link rel="stylesheet" href="fish.css">
+</head>
+<body class="">
+	<div id="stats">
+		<div><span>Fish: </span><span id="caught">0</span></div>
+		<div><span>Depth: </span><span id="depth">0</span></div>
+	</div>
+	<div id="title">
+		<div>Fathomless</div>
+		<div>a tiny fishing game</div>
+		<div>by Rasutei</div>
+	</div>
+	<main>
+		<div id="content-wrapper">
+			<div id="messages"></div>
+			<div id="log-wrapper"><div id="logs"></div></div>
+			<input id="input" type="text" value="fish" autofocus="true" autocomplete="off">
+			<div id="lights-wrapper"><div id="lights"></div></div>
+		</div>
+		<div class="particles" style="--dist: 1"></div>
+		<div class="particles" style="--dist: 2"></div>
+		<div class="particles" style="--dist: -1"></div>
+		<div class="particles" style="--dist: -2"></div>
+	</main>
+	<div id="follower"></div>
+	<svg>
+		<filter id="waves">
+			<feTurbulence id="turbulenceh1" type="turbulence" numOctaves="10" seed="4" result="NOISE"></feTurbulence>
+			<feGaussianBlur stdDeviation="1" result="BLUR" in="DISPLACEMENT"></feGaussianBlur>
+			<feDisplacementMap in="SourceGraphic" result="DISPLACEMENT" in2="BLUR" scale="5"></feDisplacementMap>
+			<animate xlink:href="#turbulenceh1" attributeName="baseFrequency" dur="120s" keyTimes="0;0.5;1" values=".02 .04; .04 .08; .02 .04" repeatCount="indefinite"></animate>
+		</filter>
+		<filter id="dither">
+			<feTurbulence baseFrequency="1" numOctaves="5" type="fractalNoise" result="NOISE"></feTurbulence>
+			<feDisplacementMap scale="4" result="OUT" in="SourceGraphic" in2="NOISE"></feDisplacementMap>
+		</filter>
+	</svg>
+</body>
+</html>
