@@ -1649,6 +1649,7 @@ export class Game {
 	static #outputFunction = console.log
 	static player
 	static currentInput
+	static lastInput
 
 	static get here() { return player.location }
 
@@ -1670,6 +1671,7 @@ export class Game {
 		this.player = player
 	}
 	static parse(input) {
+		this.lastInput = this.currentInput
 		this.currentInput = input
 		if (this.#parseFunction)
 			this.#parseFunction(input)
