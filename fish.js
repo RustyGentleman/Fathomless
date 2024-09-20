@@ -408,13 +408,13 @@ new Interaction('fish', 'Try to catch fish.', 'fish', function(self) {
 		return
 	}
 	//* Calculate fish quantity
-	const quantity = player.getVar('canCatch')? Math.round(
+	const quantity = player.getVar('canCatch')? Math.max(1, Math.round(
 		5
 		//* Fishing power
 		+ self.calculateStat('power')
 		//* Random variation. -3...3, -2...4, -1...5, etc.
 		+ (Math.random() * (6 + self.calculateStat('power')) - 5)
-	) : 0
+	)) : 0
 	console.log(`Caught ${quantity} fish.`)
 
 	//* Give fish quantity
