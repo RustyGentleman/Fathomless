@@ -161,14 +161,7 @@ new Fish('an', 'eldritch fish', 'eldritch fishes', 1200, 'A fish found at incred
 //? Discoveries
 //* - Story items and singular treasures
 new Discovery('sample container', `A reinforced metal container fitted with buoyancy devices.`, 10, function() {
-	const containerInteraction = new Interaction('container', 'Investigate the metal container.', 'container', (self) => {
-		const quantity = 16 + Math.round(Math.random() * 8 - 4)
-		self.alterVar('caught', (val) => val += quantity)
-		GameEvent.trigger('CAUGHT')
-		Game.out(`You check the container you found. After prying it open, you find it contains an assortment of fishes. You note that each is tagged with a plastic tag containing its species, size and weight measurements, and what must be codes.\n\nThe discovery makes you shiver.`)
-		player.removeInteraction(Interaction.get('container'))
-	}, {register: false})
-	Interaction.register(containerInteraction)
+	const containerInteraction = Interaction.get('container')
 	player.addInteraction(containerInteraction)
 
 	Game.out(`You find a sturdy, heavily reinforced **container** near the surface, slowly floating upwards.\n\nThe container seems to be fitted with buoyancy devices...\nPresumably for recovery in case of the loss of a vessel.\n\nYou note the discovery into your **journal**.`)
@@ -427,6 +420,13 @@ new Interaction('fish', 'Try to catch fish.', 'fish', function(self) {
 new Interaction('wait', 'Wait adrift.', 'wait', function(self) {
 	Game.out(`You wait a while, adrift in the currents.`)
 	GameEvent.trigger('TURN')
+})
+new Interaction('container', 'Investigate the metal container.', 'container', (self) => {
+	const quantity = 16 + Math.round(Math.random() * 8 - 4)
+	self.alterVar('caught', (val) => val += quantity)
+	GameEvent.trigger('CAUGHT')
+	Game.out(`You check the container you found. After prying it open, you find it contains an assortment of fishes. You note that each is tagged with a plastic tag containing its species, size and weight measurements, and what must be codes.\n\nThe discovery makes you shiver.`)
+	player.removeInteraction(Interaction.get('container'))
 })
 new Interaction('lights', 'Turn the lights on.', /(?:toggle\s*)?lights?/i, function(self) {
 	if (player.getVar('lightsWork')) {
