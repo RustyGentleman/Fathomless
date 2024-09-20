@@ -181,7 +181,7 @@ new Discovery('submarine lights', 'Lights salvaged from a submarine wreck.', 50,
 new Discovery('powerup', '', 100, function() {
 	player.stats.get('power').add += 1
 	this.depth += 100
-})
+}, { addToInventory: false })
 //* - Oddities and easter eggs
 new Discovery('"living water" sensor data', 'Sensor readings of some odd, invisible entity.', 500, function() {
 	Game.out(`You feel something bump against your hull. When you turn to look, you see nothing there, but your sensors report something.\n\nYou can't shake the feeling that you're staring right at it, and it is staring back.\n\nThe sensation makes you shiver.`)
