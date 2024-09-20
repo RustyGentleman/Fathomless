@@ -117,6 +117,7 @@ window.GameEvent = GameEvent
 window.CreateVisual = CreateVisual
 window.SpawnShapes = SpawnShapes
 window.PickOne = PickOne
+window.Game = Game
 
 //# Sounds
 const ambientCutoffs = [40, 150, 400]
@@ -375,6 +376,21 @@ new GameEvent('DEPTH', () => {
 	if (discovery)
 		discovery.find()
 })
+new GameEvent('PLAYER INTERACTION', () => {
+	UpdateHelp()
+	const saveData = {
+		p: {
+			inv: player.inventory.map(i => { return { id: i.identifier, c: i.count?? 1 } }),
+			var: Array.from(player.vars.entries()).map(v => { return { n: v[0], v: v[1].value } }),
+			int: Array.from(player.interactions.values()).map(i => { return { n: i.name, c: player.interactions[`${i.name}Count`] } }),
+		},
+		d: Discovery.all.map(d => { return { id: d.identifier, f: d.timesFound } }),
+		iiv: Array.from(Interaction.get('investigate').vars.entries()).map(v => { return { n: v[0], v: v[1].value } }),
+		b: document.body.className,
+		msgs: Array.from(messages.querySelectorAll('.msg:not(.fade)')).map(e => e.outerHTML).join(),
+	}
+	window.localStorage.setItem('fathomless-save', JSON.stringify(saveData))
+})
 //? Interactions
 new Interaction('fish', 'Try to catch fish.', 'fish', function(self) {
 	if (player.getVar('deadzone')) {
@@ -506,6 +522,17 @@ new Interaction('investigate', 'Investigate the large tunnel.', 'investigate', f
 }, {components: [CVariables]})
 	.registerVariable('fishScared', false)
 	.registerVariable('wallsSeen', false)
+new Interaction('self-destruct', 'Reset progress.', 'self-destruct', function(self) {
+	if (Game.lastInput === 'self-destruct' && Game.currentInput === 'self-destruct') {
+		Game.out('You press the button. Your reactor pressure starts ramping up quickly...')
+		setTimeout(() => {
+			window.localStorage.removeItem('fathomless-save')
+			window.location.reload()
+		}, 3000)
+	} else {
+		Game.out('You pull the safety off your self-destruct button and wait to see if the thought occurs to you again.')
+	}
+})
 
 //# Player setup
 player.registerPlaceholder('fishes', (self) => {
@@ -525,6 +552,7 @@ player.registerPlaceholder('discoveries', (self) => {
 		.join('\n')
 })
 player.addInteraction('help')
+player.addInteraction('self-destruct')
 player.addInteraction('wait')
 player.addInteraction('fish')
 player.setInventoryStrings('$fishes $discoveries')
@@ -553,7 +581,7 @@ Steptext.step()
 Game.setPlayer(player)
 Game.setParsingFunction((inp) => {
 	player.matchInteraction(inp)
-	Game.currentInput = ''
+	GameEvent.trigger('PLAYER INTERACTION')
 })
 Game.setOutputFunction((string) => {
 	//* Fade all but the latest 3 messages
@@ -572,7 +600,6 @@ Game.setOutputFunction((string) => {
 	let inputText = ''
 	if (Game.currentInput)
 		inputText = `<span class="input">${Game.currentInput}</span>`
-	Game.currentInput = undefined
 	Steptext.queue += `<div class="msg in">${inputText}${string}</div>`
 	setTimeout(() => messages.lastElementChild.classList.remove('in'), 300)
 })
@@ -662,6 +689,51 @@ function FishGen() {
 }
 FishGen()
 
+//# Load saved state, if existent
+{
+	const save = JSON.parse(window.localStorage.getItem('fathomless-save'))
+	if (save !== null)
+		try {
+			//? Reset player
+			player.inventory = []
+			player.interactions = new Set()
+
+			//? Load player data
+			for (const item of save.p.inv)
+				player.giveItem(CompositeObject.get(item.id), item.c)
+			for (const variable of save.p.var)
+				player.setVar(variable.n, variable.v)
+			for (const interaction of save.p.int) {
+				player.addInteraction(Interaction.get(interaction.n))
+				player.interactions[`${interaction.n}Count`] = interaction.c
+			}
+
+			//? Load discovery data
+			for (const discovery of save.d)
+				Discovery.get(discovery.id).timesFound = discovery.f
+
+			//? Load investigate variables
+			const iiv = Interaction.get('investigate')
+			for (const variable of save.iiv)
+				iiv.setVar(variable.n, variable.v)
+
+			//? Update interface
+			document.body.className = save.b
+			if (player.getVar('lightsWork') && player.getVar('lights'))
+				document.body.classList.add('lights')
+			if (!player.getVar('lightsWork') && player.getVar('flashlight'))
+				document.body.classList.add('flashlight')
+			caught.textContent = ''+player.getVar('caught')
+			depth.textContent = player.getVar('depth').toFixed(1)
+			document.body.style.setProperty('--depth', player.getVar('depth').toFixed(1))
+			ScrollToBottom(0, true)
+			messages.innerHTML = save.msgs
+			UpdateHelp()
+	} catch(e) {
+			console.error(e)
+		}
+}
+
 //# Helper functions
 function PickOne(array) {
 	if (array.length === 2 && array.every(e => e instanceof Array) && array[0].every(e => typeof(e) === 'number') && array[0].length === array[1].length) {
@@ -711,7 +783,7 @@ function ScrollToBottom(time=0, force=false) {
 	if (force || Steptext.queue.length !== 0)
 		main.scrollTo({top: main.scrollHeight, behavior: 'instant'})
 	if (!force)
-	requestAnimationFrame(ScrollToBottom)
+		requestAnimationFrame(ScrollToBottom)
 }
 function ModulateBeam() {
 	const SPAN = 36
