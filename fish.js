@@ -317,33 +317,7 @@ new Discovery('lights out', '', 450, function() {
 }, { addToInventory: false, variance: 0, chance: 0.1, maxTimes: Infinity, needs: () => player.getVar('turnsToResetLights') === 0 })
 new Discovery('1238', '', 250, function() {
 	Game.out(`Your sensors report readings indicating an approximately ${(Math.random()*500 + 1000).toFixed(0)}-meter tunnel opening in the seabed nearby. You feel it might be worth it to **investigate**.`)
-	const investigate = new Interaction('investigate', 'Investigate the large tunnel.', 'investigate', function(self) {
-		if (this.getVar('fishScared') && this.getVar('wallsSeen'))
-			Game.out(`You find nothing else of note, and feel you should move on.`)
-		else if (self.getVar('lights'))
-			if (!this.getVar('fishScared')) {
-				if (self.interactions.investigateCount === 0) {
-					Game.out(`You approach the massive opening. Inside, you can only catch glimpses of them, as they quickly swim away from your **lights**, but there seem to be hundreds, perhaps thousands, of fish inside, each almost the size of a human.\n\nTheir movements make you shiver.`)
-				} else {
-					Game.out(`Your lights reveal hundreds, perhaps thousands of fish inside. As you look at them, a good portion turn to face you. Each looks to be approximately 3.2 meters long.\n\nThe sight makes you shiver.`)
-					this.setVar('fishScared', true)
-				}
-			} else {
-				Game.out(`You investigate further. The entire wall of the tunnel looks as though the rock has been chipped and chewed off.\n\nThe discovery makes you shiver.`)
-				this.setVar('wallsSeen', true)
-			}
-		else {
-			if (self.interactions.investigateCount === 0)
-				Game.out(`You approach the massive opening. You can barely see with your **lights** off, but you do spot a great number of what look like eye reflections, and a myriad more of soft dots of light, presumably reflecting off of scales.`)
-			else if (!this.getVar('fishScared'))
-				Game.out(`You strain your eyes continuing to observe the mesmerizing display. More pairs of eyes seem to be looking your way each time you look.`)
-			else
-				Game.out(`You see nothing in the dark. The fish have fled further into the tunnel.`)
-		}
-		GameEvent.trigger('TURN')
-	}, {components: [CVariables]})
-	investigate.registerVariable('fishScared', false)
-	investigate.registerVariable('wallsSeen', false)
+	const investigate = Interaction.get('investigate')
 	player.addInteraction(investigate)
 	let caughtCount = 0
 	const handler = () => {
@@ -497,6 +471,33 @@ new Interaction('help', 'See a list of available commands.', /help|commands?/i, 
 	CreateLog('help', Array.from(player.interactions).map(i => `<b>${i.name}</b> - ${i.description}`).join('<br>'))
 	document.body.classList.add('log')
 })
+new Interaction('investigate', 'Investigate the large tunnel.', 'investigate', function(self) {
+	if (this.getVar('fishScared') && this.getVar('wallsSeen'))
+		Game.out(`You find nothing else of note, and feel you should move on.`)
+	else if (self.getVar('lights'))
+		if (!this.getVar('fishScared')) {
+			if (self.interactions.investigateCount === 0) {
+				Game.out(`You approach the massive opening. Inside, you can only catch glimpses of them, as they quickly swim away from your **lights**, but there seem to be hundreds, perhaps thousands, of fish inside, each almost the size of a human.\n\nTheir movements make you shiver.`)
+			} else {
+				Game.out(`Your lights reveal hundreds, perhaps thousands of fish inside. As you look at them, a good portion turn to face you. Each looks to be approximately 3.2 meters long.\n\nThe sight makes you shiver.`)
+				this.setVar('fishScared', true)
+			}
+		} else {
+			Game.out(`You investigate further. The entire wall of the tunnel looks as though the rock has been chipped and chewed off.\n\nThe discovery makes you shiver.`)
+			this.setVar('wallsSeen', true)
+		}
+	else {
+		if (self.interactions.investigateCount === 0)
+			Game.out(`You approach the massive opening. You can barely see with your **lights** off, but you do spot a great number of what look like eye reflections, and a myriad more of soft dots of light, presumably reflecting off of scales.`)
+		else if (!this.getVar('fishScared'))
+			Game.out(`You strain your eyes continuing to observe the mesmerizing display. More pairs of eyes seem to be looking your way each time you look.`)
+		else
+			Game.out(`You see nothing in the dark. The fish have fled further into the tunnel.`)
+	}
+	GameEvent.trigger('TURN')
+}, {components: [CVariables]})
+	.registerVariable('fishScared', false)
+	.registerVariable('wallsSeen', false)
 
 //# Player setup
 player.registerPlaceholder('fishes', (self) => {
