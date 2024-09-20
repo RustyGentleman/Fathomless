@@ -646,7 +646,7 @@ function FishGen() {
 		ySpread: 20,
 		alternateDirection: true,
 		duration: 10000,
-		durationSpread: 4000,
+		durationSpread: 5000,
 		timeSpread: 5000
 	})
 	setTimeout(FishGen , 4000 + Math.random() * 2000 + player.getVar('depth') * 3)
@@ -766,8 +766,8 @@ function CreateVisual(clss, y=0, distance=1, duration=3000, direction=1, size=1,
 	div.style.animationDuration = duration+'ms'
 	div.style.animationDelay = stagger+'ms'
 	div.style.zIndex = distance
+	setTimeout(() => div.remove(), duration + stagger)
 	if (!append)
 		return div
 	main.append(div)
-	setTimeout(() => div.remove(), duration + stagger)
 }
