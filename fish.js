@@ -558,7 +558,7 @@ Game.setParsingFunction((inp) => {
 Game.setOutputFunction((string) => {
 	//* Fade all but the latest 3 messages
 	main.querySelectorAll('.msg').forEach((e, i, p) => {
-		if (i > p.length - 3)
+		if (i > p.length - 10)
 			return
 		e.classList.add('fade')
 	})
