@@ -378,18 +378,17 @@ new GameEvent('DEPTH', () => {
 })
 new GameEvent('PLAYER INTERACTION', () => {
 	UpdateHelp()
-	const saveData = {
-		p: {
-			inv: player.inventory.map(i => { return { id: i.identifier, c: i.count?? 1 } }),
-			var: Array.from(player.vars.entries()).map(v => { return { n: v[0], v: v[1].value } }),
-			int: Array.from(player.interactions.values()).map(i => { return { n: i.name, c: player.interactions[`${i.name}Count`] } }),
-		},
-		d: Discovery.all.map(d => { return { id: d.identifier, f: d.timesFound } }),
-		iiv: Array.from(Interaction.get('investigate').vars.entries()).map(v => { return { n: v[0], v: v[1].value } }),
-		b: document.body.className,
-		msgs: Array.from(messages.querySelectorAll('.msg:not(.fade)')).map(e => e.outerHTML).join(),
+	SaveProgress()
+
+	const savedOnTurn = player.getVar('turn')
+	setTimeout(SaveOnSteptextFinish, 100)
+
+	function SaveOnSteptextFinish() {
+		if (Steptext.queue.length === 0 && player.getVar('turn') === savedOnTurn)
+			SaveProgress()
+		else
+			setTimeout(SaveOnSteptextFinish, 100)
 	}
-	window.localStorage.setItem('fathomless-save', JSON.stringify(saveData))
 })
 //? Interactions
 new Interaction('fish', 'Try to catch fish.', 'fish', function(self) {
@@ -809,6 +808,20 @@ function CreateLog(title, content) {
 function UpdateHelp() {
 	if (document.body.classList.contains('log') && (!logs.querySelector('.msg .input') || logs.querySelector('.msg .input').textContent === 'help'))
 		CreateLog('help', Array.from(player.interactions).map(i => `<b>${i.name}</b> - ${i.description}`).join('<br>'))
+}
+function SaveProgress() {
+	const saveData = {
+		p: {
+			inv: player.inventory.map(i => { return { id: i.identifier, c: i.count?? 1 } }),
+			var: Array.from(player.vars.entries()).map(v => { return { n: v[0], v: v[1].value } }),
+			int: Array.from(player.interactions.values()).map(i => { return { n: i.name, c: player.interactions[`${i.name}Count`] } }),
+		},
+		d: Discovery.all.map(d => { return { id: d.identifier, f: d.timesFound } }),
+		iiv: Array.from(Interaction.get('investigate').vars.entries()).map(v => { return { n: v[0], v: v[1].value } }),
+		b: document.body.className,
+		msgs: Array.from(messages.querySelectorAll('.msg:not(.fade)')).map(e => e.outerHTML).join(),
+	}
+	window.localStorage.setItem('fathomless-save', JSON.stringify(saveData))
 }
 /**
  * @param {{y: number, ySpread: number, dist: number, distSpread: number, duration: number, durationSpread: number, alternateDirection: number, size: number, sizeSpread: number, timeSpread: number}} options
