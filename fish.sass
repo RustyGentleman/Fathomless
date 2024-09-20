@@ -224,6 +224,7 @@ body.lights #follower
 		background: var(--color-dark)
 		opacity: calc(1 + var(--dist) * 0.2)
 		z-index: var(--dist)
+		will-change: transform
 	&.rtl::before
 		animation: shapemove-rtl 3s linear 1 forwards
 	&.fish
