@@ -80,6 +80,14 @@ class Discovery extends CompositeObject {
 		return eligible
 	}
 
+	/**
+	 * @param {string} id
+	 * @return {Discovery}
+	 */
+	static get(id) {
+		return this.all.find(d => d.identifier == id)
+	}
+
 	find() {
 		this.fn.apply(this)
 		this.timesFound++
