@@ -707,9 +707,10 @@ function throttle(mainFunction, delay) {
 		}
 	}
 }
-function ScrollToBottom() {
-	if (Steptext.queue.length !== 0)
+function ScrollToBottom(time=0, force=false) {
+	if (force || Steptext.queue.length !== 0)
 		main.scrollTo({top: main.scrollHeight, behavior: 'instant'})
+	if (!force)
 	requestAnimationFrame(ScrollToBottom)
 }
 function ModulateBeam() {
@@ -732,6 +733,10 @@ function CreateLog(title, content) {
 		setTimeout(() => logs.innerHTML = '', 1000)
 	})
 	logs.append(div)
+}
+function UpdateHelp() {
+	if (document.body.classList.contains('log') && (!logs.querySelector('.msg .input') || logs.querySelector('.msg .input').textContent === 'help'))
+		CreateLog('help', Array.from(player.interactions).map(i => `<b>${i.name}</b> - ${i.description}`).join('<br>'))
 }
 /**
  * @param {{y: number, ySpread: number, dist: number, distSpread: number, duration: number, durationSpread: number, alternateDirection: number, size: number, sizeSpread: number, timeSpread: number}} options
